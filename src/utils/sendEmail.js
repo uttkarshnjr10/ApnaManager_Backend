@@ -2,6 +2,7 @@ const sgMail = require('@sendgrid/mail');
 const logger = require('./logger');
 const credentialsTemplate = require('./emailTemplates/credentialsTemplate');
 const checkoutTemplate = require('./emailTemplates/checkoutTemplate');
+const resetPasswordTemplate = require('./emailTemplates/resetPasswordTemplate');
 
 if (!process.env.SENDGRID_API_KEY || !process.env.FROM_EMAIL) {
     logger.error('sendgrid api key or from_email is not defined in environment variables.');
@@ -59,4 +60,17 @@ const sendCheckoutEmail = async (toEmail, hotelEmail, guestName, hotelName, pdfB
     await sendEmail(msg, 'checkout receipt');
 };
 
-module.exports = { sendCredentialsEmail, sendCheckoutEmail };
+const sendPasswordResetEmail = async (toEmail, username, resetUrl) => {
+    const msg = {
+        to: toEmail,
+        from: {
+            name: 'ApnaManager Support',
+            email: fromEmail,
+        },
+        subject: 'Your Password Reset Link',
+        html: resetPasswordTemplate(username, resetUrl),
+    };
+    await sendEmail(msg, 'password reset');
+};
+
+module.exports = { sendCredentialsEmail, sendCheckoutEmail, sendPasswordResetEmail };

@@ -6,6 +6,8 @@ const logger = require('../utils/logger');
 const { client: redisClient } = require('../config/redisClient');
 const ApiError = require('../utils/ApiError');
 const ApiResponse = require('../utils/ApiResponse');
+const crypto = require('crypto');
+const { sendPasswordResetEmail } = require('../utils/sendEmail');
 
 const generateToken = (id, role, username) => {
     return jwt.sign({ id, role, username }, process.env.JWT_SECRET, { expiresIn: '30d' });
@@ -84,4 +86,54 @@ const logoutUser = asyncHandler(async (req, res) => {
     .json(new ApiResponse(200, null, 'logged out successfully'));
 });
 
-module.exports = { loginUser, changePassword, logoutUser };
+const forgotPassword = asyncHandler(async (req, res) => {
+    const { email } = req.body;
+    if (!email) {
+        throw new ApiError(400, 'Please provide an email address');
+    }
+    const user = await User.findOne({ email });
+    if (!user) {
+        return res.status(200).json(new ApiResponse(200, null, 'If an account with this email exists, a reset link has been sent.'));
+    }
+    const resetToken = user.createPasswordResetToken();
+    await user.save({ validateBeforeSave: false });
+    const frontendUrl = process.env.CORS_ALLOWED_ORIGINS.split(',')[0];
+    const resetUrl = `${frontendUrl}/reset-password?token=${resetToken}`;
+    try {
+        await sendPasswordResetEmail(user.email, user.username, resetUrl);
+        res.status(200).json(new ApiResponse(200, null, 'If an account with this email exists, a reset link has been sent.'));
+    } catch (error) {
+        user.passwordResetToken = undefined;
+        user.passwordResetExpires = undefined;
+        await user.save({ validateBeforeSave: false });
+        throw new ApiError(500, 'Failed to send password reset email. Please try again later.');
+    }
+});
+
+const resetPassword = asyncHandler(async (req, res) => {
+    const { token, newPassword } = req.body;
+    if (!token || !newPassword) {
+        throw new ApiError(400, 'Token and new password are required');
+    }
+   
+    const hashedToken = crypto
+        .createHash('sha256')
+        .update(token)
+        .digest('hex');
+    const user = await User.findOne({
+        passwordResetToken: hashedToken,
+        passwordResetExpires: { $gt: Date.now() }
+    });
+    if (!user) {
+        throw new ApiError(400, 'Token is invalid or has expired. Please try again.');
+    }
+    user.password = newPassword;
+   
+    user.passwordResetToken = undefined;
+    user.passwordResetExpires = undefined;
+    user.passwordChangeRequired = false;
+    await user.save();
+    res.status(200).json(new ApiResponse(200, null, 'Password has been reset successfully. You can now log in.'));
+});
+
+module.exports = { loginUser, changePassword, logoutUser, forgotPassword, resetPassword };

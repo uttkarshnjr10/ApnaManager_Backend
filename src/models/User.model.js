@@ -1,6 +1,6 @@
-
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
+const crypto = require('crypto');
 
 const options = {
   timestamps: true,
@@ -42,6 +42,8 @@ const baseUserSchema = new mongoose.Schema(
       enum: ['Active', 'Suspended'],
       default: 'Active',
     },
+    passwordResetToken: String,
+    passwordResetExpires: Date,
   },
   options // Pass options here
 );
@@ -55,6 +57,16 @@ baseUserSchema.pre('save', async function (next) {
 
 baseUserSchema.methods.matchPassword = async function (enteredPassword) {
   return await bcrypt.compare(enteredPassword, this.password);
+};
+
+baseUserSchema.methods.createPasswordResetToken = function() {
+  const resetToken = crypto.randomBytes(32).toString('hex');
+  this.passwordResetToken = crypto
+    .createHash('sha256')
+    .update(resetToken)
+    .digest('hex');
+  this.passwordResetExpires = Date.now() + 10 * 60 * 1000;
+  return resetToken;
 };
 
 //used for authentication (login, protect middleware)
