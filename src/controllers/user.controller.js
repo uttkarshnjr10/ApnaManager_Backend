@@ -252,7 +252,7 @@ const deleteUser = asyncHandler(async (req, res) => {
             try {
                 const updatedInquiry = await HotelInquiry.findOneAndUpdate(
                     { email: user.email },
-                    { status: 'Rejected' },
+                    { status: 'pending' },
                     { new: true }
                 );
                 if (updatedInquiry) {
