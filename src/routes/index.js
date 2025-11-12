@@ -13,6 +13,7 @@ const uploadRoutes = require('./upload.routes');
 const userRoutes = require('./user.routes');
 const autocompleteRoutes = require('./autocomplete.routes');
 const paymentRoutes = require('./payment.routes.js');
+const roomRoutes = require('./room.routes.js');
 
 router.use('/auth', authRoutes);
 router.use('/guests', guestRoutes);
@@ -25,5 +26,6 @@ router.use('/upload', uploadRoutes);
 router.use('/users', userRoutes);
 router.use('/autocomplete', autocompleteRoutes);
 router.use('/payments', paymentRoutes);
+router.use('/rooms', roomRoutes);
 
 module.exports = router;

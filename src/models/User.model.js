@@ -7,6 +7,25 @@ const options = {
   discriminatorKey: 'role', 
 };
 
+const roomSchema = new mongoose.Schema({
+  roomNumber: { // This is the name/number, e.g., "101" or "King Suite"
+    type: String,
+    required: true,
+    trim: true,
+  },
+  status: {
+    type: String,
+    enum: ['Vacant', 'Occupied', 'Maintenance'],
+    default: 'Vacant',
+  },
+  guestId: { // To link which guest is in which room
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Guest',
+    default: null,
+  }
+}, { _id: true });
+
+
 const baseUserSchema = new mongoose.Schema(
   {
     username: {
@@ -118,6 +137,7 @@ const HotelUser = User.discriminator(
     subscriptionPeriodEnd: {
         type: Date,
     },
+    rooms: [roomSchema]
   })
 );
 

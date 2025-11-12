@@ -1,6 +1,5 @@
 const mongoose = require('mongoose');
 const Guest = require('../models/Guest.model');
-const User = require('../models/User.model');
 const asyncHandler = require('express-async-handler');
 const logger = require('../utils/logger');
 const generateGuestPDF = require('../utils/pdfGenerator');
@@ -8,6 +7,7 @@ const { generateGuestReportCSV } = require('../utils/reportGenerator');
 const { sendCheckoutEmail } = require('../utils/sendEmail');
 const ApiError = require('../utils/ApiError');
 const ApiResponse = require('../utils/ApiResponse');
+const { HotelUser } = require('../models/User.model');
 
 // Helper function to calculate age from Date of Birth
 const calculateAge = (dob) => {
@@ -45,6 +45,27 @@ const registerGuest = asyncHandler(async (req, res) => {
     if (!idImageFrontURL || !idImageBackURL || !livePhotoURL) {
         throw new ApiError(400, 'image upload failed. front, back, and live photos are required');
     }
+    const hotel = await HotelUser.findById(hotelUserId);
+    if (!hotel) {
+        throw new ApiError(404, 'Hotel user not found');
+    }
+    const stayDetailsData = {
+        purposeOfVisit: req.body.purposeOfVisit,
+        checkIn: req.body.checkIn,
+        expectedCheckout: req.body.expectedCheckout,
+        roomNumber: req.body.roomNumber,
+    };
+    if (!stayDetailsData.roomNumber) {
+        throw new ApiError(400, 'Room number is required');
+    }
+   
+    const roomToOccupy = hotel.rooms.find(r => r.roomNumber === stayDetailsData.roomNumber);
+    if (!roomToOccupy) {
+        throw new ApiError(404, `Room "${stayDetailsData.roomNumber}" does not exist for this hotel.`);
+    }
+    if (roomToOccupy.status === 'Occupied') {
+        throw new ApiError(400, `Room "${stayDetailsData.roomNumber}" is already occupied.`);
+    }
     const primaryGuestData = {
         name: req.body.primaryGuestName,
         dob: req.body.primaryGuestDob,
@@ -59,13 +80,6 @@ const registerGuest = asyncHandler(async (req, res) => {
         },
         nationality: req.body.primaryGuestNationality
     };
-    const stayDetails = {
-        purposeOfVisit: req.body.purposeOfVisit,
-        checkIn: req.body.checkIn,
-        expectedCheckout: req.body.expectedCheckout,
-        roomNumber: req.body.roomNumber,
-    };
-   
     const accompanyingGuestsRaw = parseMaybeJson(req.body.accompanyingGuests, []);
     const accompanyingGuests = {
         adults: [],
@@ -102,10 +116,13 @@ const registerGuest = asyncHandler(async (req, res) => {
         idImageBackURL,
         livePhotoURL,
         accompanyingGuests,
-        stayDetails,
+        stayDetails: stayDetailsData,
         hotel: hotelUserId,
     });
-    logger.info(`new guest registered (${guest.customerId}) at ${req.user.username}`);
+    roomToOccupy.status = 'Occupied';
+    roomToOccupy.guestId = guest._id;
+    await hotel.save();
+    logger.info(`new guest registered (${guest.customerId}) in room ${stayDetailsData.roomNumber} at ${req.user.username}`);
     res.status(201).json(new ApiResponse(201, guest, "guest registered successfully!"));
 });
 
@@ -163,7 +180,24 @@ const checkoutGuest = asyncHandler(async (req, res) => {
 
     guest.status = 'Checked-Out';
     await guest.save();
-
+    try {
+        const hotel = await HotelUser.findById(guest.hotel._id);
+        if (hotel) {
+            const roomNumber = guest.stayDetails.roomNumber;
+            const roomToVacate = hotel.rooms.find(r => r.roomNumber === roomNumber);
+           
+            if (roomToVacate) {
+                roomToVacate.status = 'Vacant';
+                roomToVacate.guestId = null;
+                await hotel.save();
+                logger.info(`Room ${roomNumber} is now vacant.`);
+            } else {
+                logger.warn(`Could not find room ${roomNumber} for hotel ${hotel.username} during checkout.`);
+            }
+        }
+    } catch (roomError) {
+        logger.error(`Failed to update room status on checkout: ${roomError.message}`);
+    }
     logger.info(`guest ${guest.customerId} checked out by ${req.user.username}`);
 
     res.status(200).json(new ApiResponse(200, null, 'guest checked out successfully. receipt has been emailed.'));
