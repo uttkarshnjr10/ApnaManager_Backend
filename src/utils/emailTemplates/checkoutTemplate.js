@@ -1,57 +1,104 @@
 // src/utils/emailTemplates/checkoutTemplate.js
-const checkoutTemplate = (guest) => {
-  const { primaryGuest, stayDetails, hotel, accompanyingGuests } = guest;
 
-  const adults = accompanyingGuests?.adults || [];
-  const children = accompanyingGuests?.children || [];
+/**
+ * @param {object} guest - The full guest Mongoose document.
+ */
+const checkoutTemplate = (guest) => {
+  const guestName = guest.primaryGuest?.name || 'Guest';
+  const hotelName = guest.hotel?.hotelName || 'our partner hotel';
+
+  // Format dates for a friendly look
+  const checkInDate = new Date(guest.stayDetails.checkIn).toLocaleDateString('en-IN', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric'
+  });
+  const checkOutDate = new Date().toLocaleDateString('en-IN', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric'
+  });
 
   return `
-  <div style="font-family: Arial, sans-serif; background-color: #f9f9f9; padding: 30px;">
-    <div style="max-width: 650px; margin: auto; background-color: #fff; border-radius: 10px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
-      <div style="background-color: #1976D2; color: white; padding: 20px; text-align: center;">
-        <h2 style="margin: 0;">Thank You for Staying with ${hotel?.details?.hotelName || 'Us'}!</h2>
+  <!DOCTYPE html>
+  <html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        margin: 0;
+        padding: 0;
+        background-color: #f4f7f6;
+      }
+      .container {
+        max-width: 600px;
+        margin: 20px auto;
+        background-color: #ffffff;
+        border-radius: 12px;
+        overflow: hidden;
+        border: 1px solid #dee5e8;
+      }
+      .header {
+        background-color: #e6f2ff;
+        padding: 40px;
+        text-align: center;
+      }
+      .header h1 {
+        margin: 0;
+        font-size: 28px;
+        color: #0d47a1;
+      }
+      .body {
+        padding: 30px 40px;
+        color: #333;
+        line-height: 1.6;
+      }
+      .body p {
+        margin-bottom: 20px;
+      }
+      .info-box {
+        background-color: #f9f9f9;
+        padding: 20px;
+        border-radius: 8px;
+        border: 1px solid #eee;
+      }
+      .footer {
+        padding: 30px 40px;
+        text-align: center;
+        color: #888;
+        font-size: 12px;
+        background-color: #fcfcfc;
+        border-top: 1px solid #eee;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="header">
+        <h1>Thank You for Your Stay!</h1>
       </div>
-
-      <div style="padding: 25px;">
-        <p style="font-size: 16px;">Dear <strong>${primaryGuest?.name}</strong>,</p>
-        <p>Your checkout has been successfully processed. We truly appreciate your stay and hope you had a pleasant experience.</p>
-
-        <h3 style="color: #1976D2; margin-top: 30px;">Stay Details</h3>
-        <table style="width: 100%; border-collapse: collapse; margin-top: 10px;">
-          <tr><td><strong>Hotel:</strong></td><td>${hotel?.details?.hotelName || 'N/A'}</td></tr>
-          <tr><td><strong>Location:</strong></td><td>${hotel?.details?.city || 'N/A'}</td></tr>
-          <tr><td><strong>Room Number:</strong></td><td>${stayDetails?.roomNumber || 'N/A'}</td></tr>
-          <tr><td><strong>Check-In:</strong></td><td>${new Date(stayDetails?.checkIn).toLocaleString('en-IN')}</td></tr>
-          <tr><td><strong>Expected Checkout:</strong></td><td>${new Date(stayDetails?.expectedCheckout).toLocaleString('en-IN')}</td></tr>
-          <tr><td><strong>Purpose of Visit:</strong></td><td>${stayDetails?.purposeOfVisit || 'N/A'}</td></tr>
-        </table>
-
-        <h3 style="color: #1976D2; margin-top: 30px;">Primary Guest</h3>
-        <table style="width: 100%; border-collapse: collapse; margin-top: 10px;">
-          <tr><td><strong>Name:</strong></td><td>${primaryGuest?.name}</td></tr>
-          <tr><td><strong>Gender:</strong></td><td>${primaryGuest?.gender}</td></tr>
-          <tr><td><strong>Date of Birth:</strong></td><td>${new Date(primaryGuest?.dob).toLocaleDateString()}</td></tr>
-          <tr><td><strong>Email:</strong></td><td>${primaryGuest?.email}</td></tr>
-          <tr><td><strong>Phone:</strong></td><td>${primaryGuest?.phone}</td></tr>
-        </table>
-
-        ${adults.length > 0 || children.length > 0 ? `
-          <h3 style="color: #1976D2; margin-top: 30px;">Accompanying Guests</h3>
-          ${adults.length > 0 ? `
-            <p><strong>Adults:</strong></p>
-            <ul>${adults.map(a => `<li>${a.name} (${a.gender}, DOB: ${new Date(a.dob).toLocaleDateString()})</li>`).join('')}</ul>
-          ` : ''}
-          ${children.length > 0 ? `
-            <p><strong>Children:</strong></p>
-            <ul>${children.map(c => `<li>${c.name} (${c.gender}, DOB: ${new Date(c.dob).toLocaleDateString()})</li>`).join('')}</ul>
-          ` : ''}
-        ` : ''}
-
-        <p style="margin-top: 40px; color: #555;">This is an automated receipt. Please do not reply to this email.</p>
-        <p style="text-align: center; font-size: 14px; color: #1976D2; margin-top: 30px;">😊 Thank you for choosing us! We hope to welcome you again soon.</p>
+      <div class="body">
+        <p>Hi ${guestName},</p>
+        <p>We hope you had a wonderful time at <strong>${hotelName}</strong>. Your checkout has been successfully processed.</p>
+        <p>For your convenience, we have attached a detailed PDF receipt of your stay (from ${checkInDate} to ${checkOutDate}).</p>
+        
+        <div class="info-box">
+          We wish you safe travels on your onward journey and look forward to welcoming you back again soon. 👋
+        </div>
+        
+        <p style="margin-top: 30px;">
+          Best regards,<br>
+          The ApnaManager Team
+        </p>
+      </div>
+      <div class="footer">
+        This is an automated receipt sent on behalf of ${hotelName} via ApnaManager.
       </div>
     </div>
-  </div>
+  </body>
+  </html>
   `;
 };
 

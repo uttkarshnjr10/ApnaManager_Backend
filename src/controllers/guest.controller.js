@@ -278,10 +278,9 @@ const checkoutGuest = asyncHandler(async (req, res) => {
             const pdfBuffer = await generateGuestPDF(guest);
             const guestEmail = guest.primaryGuest.email;
             const hotelEmail = guest.hotel.email;
-            const hotelName = guest.hotel.hotelName || guest.hotel.username;
 
             if (guestEmail && hotelEmail) {
-                await sendCheckoutEmail(guestEmail, hotelEmail, guest.primaryGuest.name, hotelName, pdfBuffer);
+                await sendCheckoutEmail(guestEmail, hotelEmail, guest, pdfBuffer);
             }
         } catch (error) {
             logger.error(`Failed to send checkout email for guest ${guest.customerId}:`, error);

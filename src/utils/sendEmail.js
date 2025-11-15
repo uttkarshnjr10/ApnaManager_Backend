@@ -41,7 +41,9 @@ const sendCredentialsEmail = async (toEmail, username, temporaryPassword) => {
     await sendEmail(msg, 'credentials');
 };
 
-const sendCheckoutEmail = async (toEmail, hotelEmail, guestName, hotelName, pdfBuffer) => {
+const sendCheckoutEmail = async (toEmail, hotelEmail, guestObject, pdfBuffer) => {
+    const hotelName = guestObject.hotel?.hotelName || guestObject.hotel?.username || 'Your Hotel';
+    const guestName = guestObject.primaryGuest?.name || 'Guest';
     const msg = {
         to: [toEmail, hotelEmail],
         from: {
@@ -49,7 +51,7 @@ const sendCheckoutEmail = async (toEmail, hotelEmail, guestName, hotelName, pdfB
             email: fromEmail, 
         },
         subject: `Your Checkout Receipt from ${hotelName}`,
-        html: checkoutTemplate(guestName, hotelName),
+        html: checkoutTemplate(guestObject),
         attachments: [{
             content: pdfBuffer.toString('base64'),
             filename: `checkout_receipt_${guestName.replace(/\s+/g, '_')}.pdf`,
