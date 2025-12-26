@@ -1,15 +1,5 @@
-Here is the corrected, strictly accurate, and professional `README.md`.
 
-I have:
-
-1. **Removed the Load Balancer** from the diagram.
-2. **Removed Google OCR** from features and diagram (since it is disabled).
-3. **Updated the Diagram** to clearly show the flow you actually have (Parallel Uploads, Redis, Database).
-
-You can copy-paste this directly.
-
-```markdown
-# 🛡️ GuestGuard Backend (ApnaManager)
+# 🛡️ ApnaManager Backend 
 
 > An enterprise-grade Hotel Management & Security Verification System facilitating seamless, secure data exchange between Hotels and Law Enforcement Agencies.
 
