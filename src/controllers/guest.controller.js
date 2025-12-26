@@ -12,6 +12,7 @@ const Watchlist = require('../models/Watchlist.model');
 const Alert = require('../models/Alert.model');
 const Notification = require('../models/Notification.model');
 const PoliceStation = require('../models/PoliceStation.model');
+const { uploadToCloudinary } = require('../utils/cloudinary');
 
 const checkWatchlistAndNotify = async (guest, hotel) => {
     try {

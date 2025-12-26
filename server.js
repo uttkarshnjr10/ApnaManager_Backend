@@ -21,7 +21,7 @@ const app = express();
 
 //CORS Setup
 const allowedOrigins = 
-         process.env.CORS_ALLOWED_ORIGINS?.split(',') || ['http://localhost:3000'];
+         process.env.CORS_ALLOWED_ORIGINS?.split(',') || ['http://localhost:3000', 'http://localhost:5173'];
 
 
 const corsOptions = {
@@ -31,6 +31,7 @@ const corsOptions = {
     if (allowedOrigins.indexOf(origin) !== -1) {
       callback(null, true);
     } else {
+      console.log("BLOCKED CORS ORIGIN:", origin);
       callback(new Error('Not allowed by CORS'));
     }
   },
