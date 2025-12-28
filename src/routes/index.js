@@ -2,32 +2,54 @@
 const express = require('express');
 const router = express.Router();
 
-const authRoutes = require('./auth.routes');
-const guestRoutes = require('./guest.routes');
-const inquiryRoutes = require('./inquiry.routes');
-const notificationRoutes = require('./notification.routes');
-const ocrRoutes = require('./ocr.routes');
-const policeRoutes = require('./police.routes');
-const policeStationRoutes = require('./policeStation.routes');
-const uploadRoutes = require('./upload.routes');
-const userRoutes = require('./user.routes');
-const autocompleteRoutes = require('./autocomplete.routes');
-const paymentRoutes = require('./payment.routes.js');
-const roomRoutes = require('./room.routes.js');
-const watchlistRoutes = require('./watchlist.routes.js');
+// --- Import Routes ---
+const authRoutes = require('./auth/auth.routes');
+const adminRoutes = require('./admin/admin.routes');
+const stationRoutes = require('./admin/station.routes');
+const watchlistRoutes = require('./admin/watchlist.routes');
+const guestRoutes = require('./hotel/guest.routes');
+const roomRoutes = require('./hotel/room.routes');
+const inquiryRoutes = require('./hotel/inquiry.routes');
+const paymentRoutes = require('./hotel/payment.routes');
+const ocrRoutes = require('./hotel/ocr.routes');
+const autocompleteRoutes = require('./hotel/autocomplete.routes');
+const policeRoutes = require('./police/police.routes');
+const notificationRoutes = require('./police/notification.routes');
+const userRoutes = require('./common/user.routes');
+const uploadRoutes = require('./common/upload.routes');
 
+// --- Mount Routes ---
+
+// Auth
 router.use('/auth', authRoutes);
-router.use('/guests', guestRoutes);
-router.use('/inquiries', inquiryRoutes);
-router.use('/notifications', notificationRoutes);
-router.use('/ocr', ocrRoutes);
-router.use('/police', policeRoutes);
-router.use('/stations', policeStationRoutes);
-router.use('/upload', uploadRoutes);
+
+// Admin Dashboard & Admin-specific User Routes
+// Maps to: /api/users/admin/dashboard, /api/users/admin/hotels
+router.use('/users/admin', adminRoutes); 
+
+// General User Routes (Profile + Legacy Admin Actions)
+// Maps to: /api/users/profile, /api/users/police, /api/users/register
 router.use('/users', userRoutes);
-router.use('/autocomplete', autocompleteRoutes);
-router.use('/payments', paymentRoutes);
-router.use('/rooms', roomRoutes);
+
+// Police Stations (Fixed URL: /api/stations)
+router.use('/stations', stationRoutes); 
+
+// Watchlist (Fixed URL: /api/watchlist)
 router.use('/watchlist', watchlistRoutes);
+
+// Hotel Operations
+router.use('/guests', guestRoutes);
+router.use('/rooms', roomRoutes);
+router.use('/inquiries', inquiryRoutes);
+router.use('/payment', paymentRoutes);
+router.use('/ocr', ocrRoutes);
+router.use('/autocomplete', autocompleteRoutes);
+
+// Police Operations
+router.use('/police', policeRoutes);
+router.use('/notifications', notificationRoutes);
+
+// Common
+router.use('/upload', uploadRoutes);
 
 module.exports = router;
