@@ -6,7 +6,7 @@
 [![Node.js](https://img.shields.io/badge/Node.js-18.x-green?style=for-the-badge&logo=node.js)](https://nodejs.org/)
 [![Express.js](https://img.shields.io/badge/Express.js-4.x-white?style=for-the-badge&logo=express)](https://expressjs.com/)
 [![MongoDB](https://img.shields.io/badge/MongoDB-6.x-green?style=for-the-badge&logo=mongodb)](https://www.mongodb.com/)
-[![Redis](https://img.shields.io/badge/Redis-Caching-red?style=for-the-badge&logo=redis)](https://redis.io/)
+[![Redis](https://img.shields.io/badge/Redis-Auth%20Token%20Blacklisting-red?style=for-the-badge&logo=redis)](https://redis.io/)
 [![Docker](https://img.shields.io/badge/Docker-Containerized-blue?style=for-the-badge&logo=docker)](https://www.docker.com/)
 
 ---
@@ -94,11 +94,7 @@ graph TD
 
 We use **Postman** for standardizing our API requests.
 
-### 🚀 Run in Postman
-
-Click the button below to import the full API collection. This includes pre-configured environments and request examples.
-
-[<img src="https://run.pstmn.io/button.svg" alt="Run In Postman" style="width: 128px; height: 32px;">](https://www.google.com/search?q=https://uttkarshkumar.postman.co/workspace/My-Workspace~f34e0db9-e0c4-4342-8779-b96c300991d6/collection/43592077-22d12ca9-d5c4-4882-9529-0b09f5303210?action=share&creator=43592077&active-environment=43592077-e1da4c0a-a370-47b0-af49-dd61bb95b8bd)
+We have made a Collection of the APIs which is present in the application backend so to get those please inbox me then i will share you the postman collection link. 
 
 > **Note:** To test protected routes, please login via the `/auth/login` endpoint first. The system will automatically set the `jwt` cookie for subsequent requests.
 
