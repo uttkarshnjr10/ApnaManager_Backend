@@ -8,6 +8,7 @@ const asyncHandler = require('express-async-handler');
 const logger = require('../utils/logger');
 const ApiError = require('../utils/ApiError');
 const ApiResponse = require('../utils/ApiResponse');
+const { generateSignedUrl } = require('../utils/cloudinary');
 
 const searchGuests = asyncHandler(async (req, res) => {
     const { query, searchBy, reason } = req.body;
@@ -139,22 +140,40 @@ const getGuestHistory = asyncHandler(async (req, res) => {
     const stayHistory = await Guest.find({ idNumber: guest.idNumber })
         .populate('hotel', 'username hotelName city')
         .sort({ 'stayDetails.checkIn': -1 });
-    
+
     const guestIds = stayHistory.map(g => g._id);
 
-    const alerts = await Alert.find({ guest: { $in: guestIds } }).populate('createdBy', 'username');
-    const remarks = await Remark.find({ guest: { $in: guestIds } }).populate('officer', 'username').sort({ createdAt: -1 });
+    const alerts = await Alert.find({ guest: { $in: guestIds } })
+        .populate('createdBy', 'username');
+
+    const remarks = await Remark.find({ guest: { $in: guestIds } })
+        .populate('officer', 'username')
+        .sort({ createdAt: -1 });
+
+    const signImages = (g) => {
+        const doc = g.toObject ? g.toObject() : g;
+        return {
+            ...doc,
+            idImageFront: doc.idImageFront
+                ? { ...doc.idImageFront, url: generateSignedUrl(doc.idImageFront.public_id) }
+                : undefined,
+            idImageBack: doc.idImageBack
+                ? { ...doc.idImageBack, url: generateSignedUrl(doc.idImageBack.public_id) }
+                : undefined,
+            livePhoto: doc.livePhoto
+                ? { ...doc.livePhoto, url: generateSignedUrl(doc.livePhoto.public_id) }
+                : undefined,
+        };
+    };
 
     const historyData = {
-        primaryGuest: guest,
-        stayHistory,
+        primaryGuest: signImages(guest),
+        stayHistory: stayHistory.map(signImages),
         alerts,
         remarks
     };
 
-    res
-    .status(200)
-    .json(new ApiResponse(200, historyData));
+    res.status(200).json(new ApiResponse(200, historyData));
 });
 
 const addRemark = asyncHandler(async (req, res) => {
