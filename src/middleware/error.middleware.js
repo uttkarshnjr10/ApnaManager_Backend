@@ -55,12 +55,16 @@ const errorHandler = (err, req, res, next) => {
         error = new ApiError(401, message);
     }
 
-    // send Final Response
-    res.status(error.statusCode || 500).json({
+   // send Final Response
+    const statusCode = error.statusCode || 500;
+    
+    res.status(statusCode).json({
         success: false,
         message: error.message || 'Server Error',
-        // in production don't expose the stack trace to the client
-        stack: process.env.NODE_ENV === 'production' ? null : err.stack,
+        // Hide stack if it's Production OR if it's just a 401/403 (expected auth error)
+        stack: process.env.NODE_ENV === 'production' || statusCode === 401 || statusCode === 403 
+            ? null 
+            : err.stack,
     });
 };
 

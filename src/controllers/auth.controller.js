@@ -78,26 +78,43 @@ const changePassword = asyncHandler(async (req, res) => {
 });
 
 const logoutUser = asyncHandler(async (req, res) => {
-    const token =
-        req.cookies?.jwt ||
-        (req.headers.authorization && req.headers.authorization.split(' ')[1]);
+    // 1. Try to get token from Cookie first, then Header
+    const token = 
+        req.cookies?.jwt || 
+        (req.headers.authorization?.startsWith('Bearer') ? req.headers.authorization.split(' ')[1] : null);
 
+    // 2. Redis Blacklisting (Fail-Safe)
     if (token) {
-        const decoded = jwt.decode(token);
-        if (decoded?.exp) {
-            const expiresIn = decoded.exp - Math.floor(Date.now() / 1000);
-            if (expiresIn > 0) {
-                await redisClient.set(`blacklist:${token}`, 'true', { EX: expiresIn });
+        try {
+            // Using jwt.decode (synchronous) just to read expiration
+            const decoded = jwt.decode(token);
+            
+            if (decoded && decoded.exp) {
+                const now = Math.floor(Date.now() / 1000);
+                const expiresIn = decoded.exp - now;
+
+                // Only blacklist if it hasn't expired yet
+                if (expiresIn > 0) {
+                    await redisClient.set(`blacklist:${token}`, 'true', { EX: expiresIn });
+                }
             }
+        } catch (error) {
+            // Don't crash the logout process if Redis fails
+            logger.error(`Logout blacklist warning: ${error.message}`);
         }
     }
 
-    res.cookie('jwt', '', { ...cookieOptions, maxAge: 0 });
+    // 3. Clear Cookie (Production Safe)
+    res.cookie('jwt', '', { 
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+        expires: new Date(0) // Set expiration to 1970 (Force Delete)
+    });
 
-    logger.info(`user logged out: ${req.user?.email || 'unknown'}`);
-    res
-        .status(200)
-        .json(new ApiResponse(200, null, 'logged out successfully'));
+    logger.info(`User logged out: ${req.user?.email || 'Anonymous'}`);
+
+    res.status(200).json(new ApiResponse(200, null, 'Logged out successfully'));
 });
 
 const forgotPassword = asyncHandler(async (req, res) => {

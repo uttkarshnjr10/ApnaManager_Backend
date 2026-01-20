@@ -8,12 +8,9 @@ const ApiError = require('../utils/ApiError');
 const protect = asyncHandler(async (req, res, next) => {
     let token;
 
-    //  Check for token in Cookies 
     if (req.cookies && req.cookies.jwt) {
         token = req.cookies.jwt;
-    } 
-    // Fallback: Check for Bearer token in headers
-    else if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
+    } else if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
         token = req.headers.authorization.split(' ')[1];
     }
 
@@ -22,26 +19,36 @@ const protect = asyncHandler(async (req, res, next) => {
     }
 
     try {
-        // Check if blacklisted
+        // 1. Check Redis Blacklist
+        // We do this BEFORE verify to save CPU cycles on invalid tokens
         const isBlacklisted = await redisClient.get(`blacklist:${token}`);
+        
         if (isBlacklisted) {
-            // if blacklisted, clear the cookie to prevent loop
-            res.clearCookie('jwt'); 
-            return next(new ApiError(401, 'Not authorized, token has been invalidated. Please log in again.'));
+            res.clearCookie('jwt', cookieOptions);
+            return next(new ApiError(401, 'Session expired. Please log in again.'));
         }
 
+        // 2. Verify Token
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
-        req.user = await User.findById(decoded.id).select('-password');
 
+        // 3. Attach User
+        req.user = await User.findById(decoded.id).select('-password');
+        
         if (!req.user) {
-            return next(new ApiError(401, 'Not authorized, user not found'));
+            return next(new ApiError(401, 'User no longer exists'));
         }
+
         next();
 
     } catch (error) {
-        logger.error(`Token verification failed: ${error.message}`);
-        // Clear invalid cookie
-        res.clearCookie('jwt');
+        // Clear cookie if token is invalid/expired
+        res.clearCookie('jwt', { ...cookieOptions, maxAge: 0 });
+
+        if (error.name === 'TokenExpiredError') {
+            return next(new ApiError(401, 'Token expired, please login again'));
+        }
+        
+        logger.error(`Auth Middleware Error: ${error.message}`);
         return next(new ApiError(401, 'Not authorized, token failed'));
     }
 });
