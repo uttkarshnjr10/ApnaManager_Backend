@@ -82,7 +82,6 @@ const registerGuest = asyncHandler(async (req, res) => {
         throw new ApiError(404, 'hotel user not found');
     }
 
-    // upload all files to cloudinary in parallel
     const files = req.files || [];
     if (files.length === 0) {
         throw new ApiError(400, 'no files uploaded');
@@ -92,7 +91,6 @@ const registerGuest = asyncHandler(async (req, res) => {
         files.map(file => uploadToCloudinary(file, 'guest-guard'))
     );
 
-    // map by fieldname
     const filesMap = uploadResults.reduce((map, item) => {
         map[item.fieldname] = item;
         return map;
@@ -105,11 +103,21 @@ const registerGuest = asyncHandler(async (req, res) => {
         return value ?? fallback;
     };
 
-    const idImageFrontURL = filesMap['idImageFront']?.url;
-    const idImageBackURL = filesMap['idImageBack']?.url;
-    const livePhotoURL = filesMap['livePhoto']?.url;
+    // ✅ NEW OBJECT STRUCTURE (PRIMARY GUEST)
+    const idImageFront = {
+        url: filesMap['idImageFront']?.url,
+        public_id: filesMap['idImageFront']?.public_id
+    };
+    const idImageBack = {
+        url: filesMap['idImageBack']?.url,
+        public_id: filesMap['idImageBack']?.public_id
+    };
+    const livePhoto = {
+        url: filesMap['livePhoto']?.url,
+        public_id: filesMap['livePhoto']?.public_id
+    };
 
-    if (!idImageFrontURL || !idImageBackURL || !livePhotoURL) {
+    if (!idImageFront.url || !idImageBack.url || !livePhoto.url) {
         throw new ApiError(400, 'image upload failed. front, back, and live photos are required');
     }
 
@@ -153,9 +161,24 @@ const registerGuest = asyncHandler(async (req, res) => {
     (accompanyingGuestsRaw || []).forEach((guest, index) => {
         const processedGuest = {
             ...guest,
-            idImageFrontURL: filesMap[`accompanying_${index}_idImageFront`]?.url,
-            idImageBackURL: filesMap[`accompanying_${index}_idImageBack`]?.url,
-            livePhotoURL: filesMap[`accompanying_${index}_livePhoto`]?.url,
+            idImageFront: filesMap[`accompanying_${index}_idImageFront`]
+                ? {
+                    url: filesMap[`accompanying_${index}_idImageFront`].url,
+                    public_id: filesMap[`accompanying_${index}_idImageFront`].public_id
+                }
+                : undefined,
+            idImageBack: filesMap[`accompanying_${index}_idImageBack`]
+                ? {
+                    url: filesMap[`accompanying_${index}_idImageBack`].url,
+                    public_id: filesMap[`accompanying_${index}_idImageBack`].public_id
+                }
+                : undefined,
+            livePhoto: filesMap[`accompanying_${index}_livePhoto`]
+                ? {
+                    url: filesMap[`accompanying_${index}_livePhoto`].url,
+                    public_id: filesMap[`accompanying_${index}_livePhoto`].public_id
+                }
+                : undefined,
         };
 
         if (!guest.dob) {
@@ -172,9 +195,9 @@ const registerGuest = asyncHandler(async (req, res) => {
         primaryGuest: primaryGuestData,
         idType: req.body.idType,
         idNumber: req.body.idNumber,
-        idImageFrontURL,
-        idImageBackURL,
-        livePhotoURL,
+        idImageFront,
+        idImageBack,
+        livePhoto,
         accompanyingGuests,
         stayDetails: stayDetailsData,
         hotel: hotelUserId,
@@ -188,6 +211,7 @@ const registerGuest = asyncHandler(async (req, res) => {
 
     checkWatchlistAndNotify(guest, hotel);
 });
+
 
 
 const calculateAge = (dob) => {
