@@ -1,18 +1,18 @@
-const { HotelUser } = require('../models/User.model.js');
+// 1. FIX: Import the new Hotel model
+const Hotel = require('../models/Hotel.model'); 
 const asyncHandler = require('express-async-handler');
 const ApiError = require('../utils/ApiError');
 const ApiResponse = require('../utils/ApiResponse');
 const mongoose = require('mongoose');
 
-
 const getMyRooms = asyncHandler(async (req, res) => {
-  const hotel = await HotelUser.findById(req.user._id).select('rooms');
+  // 2. FIX: Use Hotel model
+  const hotel = await Hotel.findById(req.user._id).select('rooms');
   if (!hotel) {
     throw new ApiError(404, 'Hotel not found');
   }
   res.status(200).json(new ApiResponse(200, hotel.rooms));
 });
-
 
 const addRoom = asyncHandler(async (req, res) => {
   const { roomNumber } = req.body;
@@ -20,7 +20,7 @@ const addRoom = asyncHandler(async (req, res) => {
     throw new ApiError(400, 'Room number/name is required');
   }
 
-  const hotel = await HotelUser.findById(req.user._id);
+  const hotel = await Hotel.findById(req.user._id);
   if (!hotel) {
     throw new ApiError(404, 'Hotel not found');
   }
@@ -44,7 +44,6 @@ const addRoom = asyncHandler(async (req, res) => {
   res.status(201).json(new ApiResponse(201, newRoom, 'Room added successfully'));
 });
 
-
 const updateRoom = asyncHandler(async (req, res) => {
   const { roomId } = req.params;
   const { roomNumber } = req.body;
@@ -53,7 +52,8 @@ const updateRoom = asyncHandler(async (req, res) => {
     throw new ApiError(400, 'Room number is required');
   }
 
-  const hotel = await HotelUser.findById(req.user._id);
+  const hotel = await Hotel.findById(req.user._id);
+  // hotel.rooms is a Mongoose DocumentArray, so .id() works
   const room = hotel.rooms.id(roomId);
 
   if (!room) {
@@ -63,7 +63,7 @@ const updateRoom = asyncHandler(async (req, res) => {
     throw new ApiError(400, 'Cannot edit an occupied room');
   }
 
-  // Check if new room number already exists
+  // Check for duplicate room number (excluding current room)
   const roomExists = hotel.rooms.find(r => r.roomNumber === roomNumber && r._id.toString() !== roomId);
   if (roomExists) {
     throw new ApiError(400, 'Another room with this number/name already exists');
@@ -78,7 +78,7 @@ const updateRoom = asyncHandler(async (req, res) => {
 const deleteRoom = asyncHandler(async (req, res) => {
   const { roomId } = req.params;
 
-  const hotel = await HotelUser.findById(req.user._id);
+  const hotel = await Hotel.findById(req.user._id);
   const room = hotel.rooms.id(roomId);
 
   if (!room) {
@@ -88,15 +88,15 @@ const deleteRoom = asyncHandler(async (req, res) => {
     throw new ApiError(400, 'Cannot delete an occupied room. Check the guest out first.');
   }
 
-  room.deleteOne(); // Mongoose 8+
-  // For older Mongoose: hotel.rooms.pull(roomId);
+  // Remove the subdocument
+  room.deleteOne(); 
   await hotel.save();
 
   res.status(200).json(new ApiResponse(200, null, 'Room deleted successfully'));
 });
 
 const getRoomDashboardStats = asyncHandler(async (req, res) => {
-  const hotel = await HotelUser.findById(req.user._id).select('rooms');
+  const hotel = await Hotel.findById(req.user._id).select('rooms');
   if (!hotel) {
     throw new ApiError(404, 'Hotel not found');
   }
@@ -107,7 +107,7 @@ const getRoomDashboardStats = asyncHandler(async (req, res) => {
   const vacantRooms = hotel.rooms
     .filter(r => r.status === 'Vacant')
     .map(r => r.roomNumber)
-    .sort(); // Get a sorted list of vacant room numbers
+    .sort(); 
 
   const stats = {
     total,

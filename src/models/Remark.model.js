@@ -2,24 +2,21 @@
 const mongoose = require('mongoose');
 
 const remarkSchema = new mongoose.Schema({
-    guest: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: 'Guest',
-        required: true,
-    },
+    guest: { type: mongoose.Schema.Types.ObjectId, ref: 'Guest', required: true },
+    
     officer: {
         type: mongoose.Schema.Types.ObjectId,
-        ref: 'User',
         required: true,
+        refPath: 'officerModel' 
     },
-    text: {
+    officerModel: {
         type: String,
-        required: [true, 'Remark text cannot be empty.'],
-        trim: true,
+        required: true,
+        enum: ['Police', 'RegionalAdmin'] // Usually only Police/Admin make remarks?
     },
-}, {
-    timestamps: true,
-});
+    
+    text: { type: String, required: true, trim: true },
+}, { timestamps: true });
 
 const Remark = mongoose.model('Remark', remarkSchema);
 

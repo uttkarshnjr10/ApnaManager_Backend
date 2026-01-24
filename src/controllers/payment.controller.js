@@ -1,13 +1,15 @@
-const { User, HotelUser } = require('../models/User.model');
+// 1. FIX: Import Hotel model directly
+const Hotel = require('../models/Hotel.model');
 const asyncHandler = require('express-async-handler');
 const ApiError = require('../utils/ApiError');
 const logger = require('../utils/logger');
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 
-// 1. CREATE SUBSCRIPTION SESSION
 const createSubscriptionSession = asyncHandler(async (req, res) => {
-    const { priceId } = req.body; // e.g., 'price_123abc' from your Stripe dashboard
-    const user = await HotelUser.findById(req.user.id);
+    const { priceId } = req.body;
+    
+    // 2. FIX: Use Hotel model
+    const user = await Hotel.findById(req.user.id);
 
     if (!user) {
         throw new ApiError(404, 'User not found');
@@ -15,7 +17,6 @@ const createSubscriptionSession = asyncHandler(async (req, res) => {
 
     let stripeCustomerId = user.stripeCustomerId;
 
-    // 1. Create a Stripe Customer if one doesn't exist
     if (!stripeCustomerId) {
         const customer = await stripe.customers.create({
             email: user.email,
@@ -29,16 +30,18 @@ const createSubscriptionSession = asyncHandler(async (req, res) => {
         await user.save();
     }
 
-    const frontendUrl = process.env.CORS_ALLOWED_ORIGINS.split(',')[0];
+    // Fallback for dev environment if env var is missing
+    const frontendUrl = process.env.CORS_ALLOWED_ORIGINS 
+        ? process.env.CORS_ALLOWED_ORIGINS.split(',')[0] 
+        : 'http://localhost:5173';
 
-    // 2. Create a Checkout Session
     const session = await stripe.checkout.sessions.create({
         payment_method_types: ['card'],
         mode: 'subscription',
         customer: stripeCustomerId,
         line_items: [
             {
-                price: priceId, // The ID of the plan you created in Stripe
+                price: priceId,
                 quantity: 1,
             },
         ],
@@ -46,14 +49,9 @@ const createSubscriptionSession = asyncHandler(async (req, res) => {
         cancel_url: `${frontendUrl}/hotel/subscription`,
     });
 
-    // 3. Send the session URL back to the frontend
     res.status(200).json({ url: session.url });
 });
 
-// 2. HANDLE STRIPE WEBHOOKS
-// This is how Stripe tells you a payment was successful.
-// You requested to do this part later, but it's CRITICAL.
-// For now, we'll just log it.
 const handleStripeWebhook = asyncHandler(async (req, res) => {
     const sig = req.headers['stripe-signature'];
     let event;
@@ -69,18 +67,14 @@ const handleStripeWebhook = asyncHandler(async (req, res) => {
         return res.status(400).send(`Webhook Error: ${err.message}`);
     }
 
-    // Handle the event
     switch (event.type) {
         case 'checkout.session.completed':
         case 'invoice.payment_succeeded':
             const session = event.data.object;
-            // TODO: This is where you'll update your database
-            // Find user by session.customer, update their
-            // subscriptionStatus and subscriptionPeriodEnd.
+            // Future TODO: Update Hotel model here
             logger.info(`Payment success for Stripe Customer: ${session.customer}`);
             break;
         case 'invoice.payment_failed':
-            // TODO: Handle failed payment
             logger.warn(`Payment failed for Stripe Customer: ${event.data.object.customer}`);
             break;
         default:

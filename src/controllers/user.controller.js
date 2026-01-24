@@ -1,7 +1,9 @@
-// src/controllers/user.controller.js
-const { User, HotelUser, PoliceUser, RegionalAdminUser } = require('../models/User.model');
+const Hotel = require('../models/Hotel.model');
+const Police = require('../models/Police.model');
+const RegionalAdmin = require('../models/RegionalAdmin.model');
 const HotelInquiry = require('../models/HotelInquiry.model');
 const AccessLog = require('../models/AccessLog.model');
+
 const asyncHandler = require('express-async-handler');
 const logger = require('../utils/logger');
 const { sendCredentialsEmail } = require('../utils/sendEmail');
@@ -9,12 +11,39 @@ const crypto = require('crypto');
 const ApiError = require('../utils/ApiError');
 const ApiResponse = require('../utils/ApiResponse');
 
+// Helper to check if email exists in ANY collection
+const checkEmailExists = async (email) => {
+    const [hotel, police, admin] = await Promise.all([
+        Hotel.findOne({ email }),
+        Police.findOne({ email }),
+        RegionalAdmin.findOne({ email })
+    ]);
+    return hotel || police || admin;
+};
+
+// Helper to find a user by ID across collections (mostly for Admin operations)
+const findAnyUserById = async (id) => {
+    // Check Hotel first (most common), then Police, then Admin
+    let user = await Hotel.findById(id);
+    if (user) return { user, model: Hotel, role: 'Hotel' };
+
+    user = await Police.findById(id);
+    if (user) return { user, model: Police, role: 'Police' };
+
+    user = await RegionalAdmin.findById(id);
+    if (user) return { user, model: RegionalAdmin, role: 'Regional Admin' };
+
+    return { user: null, model: null, role: null };
+};
+
 const registerUser = asyncHandler(async (req, res) => {
     const { username, email, role, details, policeStation } = req.body;
-    const userExists = await User.findOne({ email });
-    if (userExists) {
+
+    // 1. Check Uniqueness across ALL collections
+    if (await checkEmailExists(email)) {
         throw new ApiError(400, 'user with this email already exists');
     }
+
     const temporaryPassword = crypto.randomBytes(8).toString('hex');
     const commonData = {
         username,
@@ -22,7 +51,10 @@ const registerUser = asyncHandler(async (req, res) => {
         password: temporaryPassword,
         passwordChangeRequired: true,
     };
+
     let user;
+
+    // 2. Create in specific collection
     if (role === 'Hotel') {
         const hotelData = {
             ...commonData,
@@ -38,16 +70,19 @@ const registerUser = asyncHandler(async (req, res) => {
             postOffice: details.postOffice,
             localThana: details.localThana,
             pinLocation: details.pinLocation,
-            ownerSignature: details.ownerSignature,
+            // Ensure these match the Object structure in your new Schema
+            ownerSignature: details.ownerSignature, 
             hotelStamp: details.hotelStamp,
             aadhaarCard: details.aadhaarCard,
         };
-        user = await HotelUser.create(hotelData);
+        user = await Hotel.create(hotelData);
+
+        // Update Inquiry Status
         if (user) {
             try {
                 await HotelInquiry.findOneAndUpdate(
                     { email: user.email },
-                    { status: 'Approved' },
+                    { status: 'approved' }, // matching lowercase enum in model
                     { new: true }
                 );
                 logger.info(`Associated inquiry for ${user.email} marked as 'Approved'.`);
@@ -55,23 +90,30 @@ const registerUser = asyncHandler(async (req, res) => {
                 logger.error(`Could not update inquiry for new user ${user.email}: ${inquiryError.message}`);
             }
         }
+
     } else if (role === 'Police') {
-        user = await PoliceUser.create({ ...commonData, ...details, policeStation });
+        user = await Police.create({ ...commonData, ...details, policeStation });
     } else if (role === 'Regional Admin') {
-        user = await RegionalAdminUser.create({ ...commonData, ...details });
+        user = await RegionalAdmin.create({ ...commonData, ...details });
     } else {
         throw new ApiError(400, 'Invalid user role specified');
     }
+
     if (user) {
-        const tempPassForEmail = temporaryPassword;
-        sendCredentialsEmail(user.email, user.username, tempPassForEmail);
-       
-        logger.info(`new user (${user.role}) created by admin ${req.user.username}: ${user.email}`);
-       
+        // Send Email
+        try {
+            await sendCredentialsEmail(user.email, user.username, temporaryPassword);
+        } catch (emailErr) {
+            logger.error(`Failed to send email to ${user.email}`);
+            // We don't rollback user creation, but we log the error
+        }
+        
+        logger.info(`new user (${role}) created by admin ${req.user.username}: ${user.email}`);
+        
         const responseData = {
             message: 'user created successfully. credentials have been emailed.',
             username: user.username,
-            password: tempPassForEmail,
+            password: temporaryPassword,
         };
         res.status(201).json(new ApiResponse(201, responseData));
     } else {
@@ -79,21 +121,41 @@ const registerUser = asyncHandler(async (req, res) => {
     }
 });
 
+// src/controllers/user.controller.js
+
 const getUserProfile = asyncHandler(async (req, res) => {
-    const user = await User.findById(req.user.id).lean();
-    if (!user) {
-        throw new ApiError(404, 'user not found');
-    }
+    // req.user is the Mongoose document attached by the middleware
+    let user = req.user; 
+    
+    // Convert Mongoose document to a plain JavaScript object
+    const userObject = user.toObject ? user.toObject() : { ...user };
+    
+    // CRITICAL FIX: Manually inject the role into the response
+    // The middleware (protect) attached 'role' to req.user, but toObject() strips it out
+    // because it's not in the Schema anymore.
+    userObject.role = req.user.role; 
 
-    delete user.password;
-    delete user.passwordResetToken;
-    delete user.passwordResetExpires;
+    // Remove sensitive data
+    delete userObject.password;
+    delete userObject.passwordResetToken;
+    delete userObject.passwordResetExpires;
 
-    res.status(200).json(new ApiResponse(200, user));
+    res.status(200).json(new ApiResponse(200, userObject));
 });
 
 const updateUserProfile = asyncHandler(async (req, res) => {
-    const user = await User.findById(req.user.id);
+    // We know the role from req.user (attached in middleware)
+    const role = req.user.role; 
+    const userId = req.user._id;
+
+    let Model;
+    if (role === 'Hotel') Model = Hotel;
+    else if (role === 'Police') Model = Police;
+    else if (role === 'Regional Admin') Model = RegionalAdmin;
+    else throw new ApiError(400, 'Unknown user role');
+
+    const user = await Model.findById(userId);
+
     if (!user) {
         throw new ApiError(404, 'user not found');
     }
@@ -102,19 +164,20 @@ const updateUserProfile = asyncHandler(async (req, res) => {
     
     if (req.body.details) {
         Object.keys(req.body.details).forEach(key => {
+            // Mongoose allows setting properties directly even if nested
             user[key] = req.body.details[key];
         });
     }
 
     const updatedUser = await user.save();
+    
+    // Clean response
     const userObject = updatedUser.toObject();
     delete userObject.password;
     delete userObject.passwordResetToken;
     delete userObject.passwordResetExpires;
     
-    res
-    .status(200)
-    .json(new ApiResponse(200, userObject, 'profile updated successfully'));
+    res.status(200).json(new ApiResponse(200, userObject, 'profile updated successfully'));
 });
 
 const updateUserPassword = asyncHandler(async (req, res) => {
@@ -124,7 +187,14 @@ const updateUserPassword = asyncHandler(async (req, res) => {
         throw new ApiError(400, 'please provide both old and new passwords (min 6 chars for new)');
     }
     
-    const user = await User.findById(req.user.id).select('+password');
+    // Determine Model
+    const role = req.user.role;
+    let Model;
+    if (role === 'Hotel') Model = Hotel;
+    else if (role === 'Police') Model = Police;
+    else if (role === 'Regional Admin') Model = RegionalAdmin;
+
+    const user = await Model.findById(req.user._id).select('+password');
 
     if (user && (await user.matchPassword(oldPassword))) {
         user.password = newPassword;
@@ -132,9 +202,7 @@ const updateUserPassword = asyncHandler(async (req, res) => {
         await user.save();
         logger.info(`password updated for user: ${user.email}`);
 
-        res
-        .status(200)
-        .json(new ApiResponse(200, null, 'password updated successfully'));
+        res.status(200).json(new ApiResponse(200, null, 'password updated successfully'));
 
     } else {
         throw new ApiError(401, 'invalid old password');
@@ -142,18 +210,20 @@ const updateUserPassword = asyncHandler(async (req, res) => {
 });
 
 const getAdminDashboardData = asyncHandler(async (req, res) => {
-    const hotelCount = await HotelUser.countDocuments();
-    const policeCount = await PoliceUser.countDocuments();
+    // Count from separate collections
+    const hotelCount = await Hotel.countDocuments();
+    const policeCount = await Police.countDocuments();
 
-    const guestRegistrationsToday = 0;
+    // Placeholder Logic (You might want to query Guests/Logs here later)
+    const guestRegistrationsToday = 0; 
     const policeSearchesToday = 0;
 
-    const recentHotels = await HotelUser.find()
+    const recentHotels = await Hotel.find()
         .sort({ createdAt: -1 })
         .limit(5)
         .select('username city hotelName status');
 
-    const recentPolice = await PoliceUser.find()
+    const recentPolice = await Police.find()
         .sort({ createdAt: -1 })
         .limit(5)
         .select('username station jurisdiction status');
@@ -171,9 +241,7 @@ const getAdminDashboardData = asyncHandler(async (req, res) => {
         },
     };
 
-    res
-    .status(200)
-    .json(new ApiResponse(200, dashboardData));
+    res.status(200).json(new ApiResponse(200, dashboardData));
 });
 
 const getHotelUsers = asyncHandler(async (req, res) => {
@@ -193,10 +261,8 @@ const getHotelUsers = asyncHandler(async (req, res) => {
         ];
     }
 
-    const hotels = await HotelUser.find(query).lean();
-    res
-    .status(200)
-    .json(new ApiResponse(200, hotels));
+    const hotels = await Hotel.find(query).lean();
+    res.status(200).json(new ApiResponse(200, hotels));
 });
 
 const getPoliceUsers = asyncHandler(async (req, res) => {
@@ -216,15 +282,15 @@ const getPoliceUsers = asyncHandler(async (req, res) => {
         ];
     }
 
-    const policeUsers = await PoliceUser.find(query).lean();
-    res
-    .status(200)
-    .json(new ApiResponse(200, policeUsers));
+    const policeUsers = await Police.find(query).lean();
+    res.status(200).json(new ApiResponse(200, policeUsers));
 });
 
 const updateUserStatus = asyncHandler(async (req, res) => {
     const { status } = req.body;
-    const user = await User.findById(req.params.id);
+    
+    // We don't know if ID belongs to Hotel or Police, so we check using helper
+    const { user, model } = await findAnyUserById(req.params.id);
 
     if (user) {
         user.status = status;
@@ -234,9 +300,7 @@ const updateUserStatus = asyncHandler(async (req, res) => {
         const userObject = updatedUser.toObject();
         delete userObject.password;
 
-        res
-        .status(200)
-        .json(new ApiResponse(200, userObject, 'user status updated'));
+        res.status(200).json(new ApiResponse(200, userObject, 'user status updated'));
     } else {
         throw new ApiError(404, 'user not found');
     }
@@ -244,11 +308,18 @@ const updateUserStatus = asyncHandler(async (req, res) => {
 
 const deleteUser = asyncHandler(async (req, res) => {
     const userId = req.params.id;
-    const user = await User.findByIdAndDelete(userId);
+    
+    // 1. Find the user to know their role (for cleanup logic)
+    const { user, model, role } = await findAnyUserById(userId);
+
     if (user) {
+        // 2. Delete using the specific model
+        await model.findByIdAndDelete(userId);
+        
         logger.info(`admin ${req.user.username} deleted user ${user.username} (ID: ${userId})`);
-       
-        if (user.role === 'Hotel' && user.email) {
+        
+        // Hotel-specific cleanup (Inquiry status)
+        if (role === 'Hotel' && user.email) {
             try {
                 const updatedInquiry = await HotelInquiry.findOneAndUpdate(
                     { email: user.email },
@@ -256,15 +327,13 @@ const deleteUser = asyncHandler(async (req, res) => {
                     { new: true }
                 );
                 if (updatedInquiry) {
-                    logger.info(`Associated inquiry for ${user.email} marked as 'Rejected'.`);
+                    logger.info(`Associated inquiry for ${user.email} marked as 'Pending' (Rejected equivalent).`);
                 }
             } catch (inquiryError) {
-                logger.error(`Could not update inquiry for deleted user ${user.email}: ${inquiryError.message}`);
+                logger.error(`Could not update inquiry for deleted user: ${inquiryError.message}`);
             }
         }
-        res
-        .status(200)
-        .json(new ApiResponse(200, null, 'user removed successfully'));
+        res.status(200).json(new ApiResponse(200, null, 'user removed successfully'));
     } else {
         logger.warn(`Admin ${req.user.username} tried to delete non-existent user ID: ${userId}`);
         throw new ApiError(404, 'user not found');
@@ -277,24 +346,31 @@ const getAccessLogs = asyncHandler(async (req, res) => {
 
     if (searchTerm) {
         const regex = new RegExp(searchTerm, 'i');
-        const users = await User.find({ username: regex }).select('_id');
-        const userIds = users.map(user => user._id);
+        
+        // Find matching users in ALL collections
+        const [hotels, police, admins] = await Promise.all([
+            Hotel.find({ username: regex }).select('_id'),
+            Police.find({ username: regex }).select('_id'),
+            RegionalAdmin.find({ username: regex }).select('_id')
+        ]);
+
+        const userIds = [...hotels, ...police, ...admins].map(u => u._id);
 
         query.$or = [
             { action: regex },
             { reason: regex },
             { searchQuery: regex },
-            { user: { $in: userIds } }
+            { user: { $in: userIds } } // Match any of the found user IDs
         ];
     }
 
+    // Populate works here because AccessLog uses `refPath: 'userModel'`
+    // Mongoose will automatically look up the correct collection.
     const logs = await AccessLog.find(query)
-        .populate('user', 'username role')
+        .populate('user', 'username role') 
         .sort({ timestamp: -1 });
 
-    res
-    .status(200)
-    .json(new ApiResponse(200, logs));
+    res.status(200).json(new ApiResponse(200, logs));
 });
 
 module.exports = { 

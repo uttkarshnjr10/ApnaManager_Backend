@@ -20,8 +20,13 @@ const watchlistSchema = new mongoose.Schema({
     // This links to the Admin who added the item, for accountability
     addedBy: {
         type: mongoose.Schema.Types.ObjectId,
-        ref: 'User',
         required: true,
+        refPath: 'addedByModel'
+    },
+    addedByModel: {
+        type: String,
+        required: true,
+        enum: ['Police', 'RegionalAdmin']
     },
 }, {
     timestamps: true,

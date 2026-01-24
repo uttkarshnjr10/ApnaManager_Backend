@@ -17,11 +17,16 @@ const caseReportSchema = new mongoose.Schema({
     default: 'Open',
   },
   // Link to the officer who filed it
-  officer: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
-    required: true,
-  },
+ officer: {
+        type: mongoose.Schema.Types.ObjectId,
+        required: true,
+        refPath: 'officerModel'
+    },
+    officerModel: {
+        type: String,
+        required: true,
+        enum: ['Police'] // Only police file cases?
+    },
   
   guest: {
     type: mongoose.Schema.Types.ObjectId,
