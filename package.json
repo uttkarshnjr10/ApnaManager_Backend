@@ -5,7 +5,12 @@
   "scripts": {
     "dev": "nodemon --env-file .env server.js",
     "start": "node server.js",
-    "seed": "node seeder.js"
+    "seed": "node seeder.js", 
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "test": "jest --detectOpenHandles",
+    "prepare": "husky install"
   },
   "dependencies": {
     "@google-cloud/vision": "^5.3.3",
@@ -32,7 +37,14 @@
     "stripe": "^19.3.0"
   },
   "devDependencies": {
-    "nodemon": "^3.1.10"
+    "eslint": "^9.39.2",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-prettier": "^5.5.5",
+    "husky": "^9.1.7",
+    "jest": "^30.2.0",
+    "nodemon": "^3.1.11",
+    "prettier": "^3.8.1",
+    "supertest": "^7.2.2"
   },
   "engines": {
     "node": ">=18.0.0"

@@ -1,0 +1,62 @@
+name: Backend CI/CD Pipeline
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  # JOB 1: QUALITY CHECK (CI)
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        node-version: [18.x]
+        mongodb-version: ['6.0']
+
+    services:
+      mongodb:
+        image: mongo:6.0
+        ports:
+          - 27017:27017
+
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v3
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: ${{ matrix.node-version }}
+        cache: 'npm'
+
+    - name: Install Dependencies
+      run: npm ci
+
+    # 1. Check for bad code style
+    # (Optional: Uncomment if you have set up ESLint config)
+    # - name: Lint Code
+    #   run: npm run lint
+
+    # 2. Run Tests
+    - name: Run Tests
+      run: npm test
+      env:
+        MONGO_URI: mongodb://localhost:27017/test_db
+        JWT_SECRET: fd8a14f62a89c15b6b3a3f7d2b3ffb9aa340a42e5a30e6a6fa25b0c6d
+        PORT: 5000
+        NODE_ENV: test
+
+  # JOB 2: DEPLOY TO RENDER (CD)
+  # This runs ONLY if 'build-and-test' passes
+  deploy:
+    needs: build-and-test
+    if: github.ref == 'refs/heads/main' # Only deploy on main branch push
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Trigger Render Deploy
+        # We use a simple curl request to hit Render's Deploy Hook
+        run: curl "${{ secrets.RENDER_DEPLOY_HOOK }}"
