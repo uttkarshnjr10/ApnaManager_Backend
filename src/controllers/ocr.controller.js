@@ -4,21 +4,32 @@ const logger = require('../utils/logger');
 const ApiError = require('../utils/ApiError');
 const ApiResponse = require('../utils/ApiResponse');
 
-// Creates a client
+// Initialize Google Vision Client
+// Ensure 'GOOGLE_APPLICATION_CREDENTIALS' env var is set, or keyFilename is passed
 const visionClient = new ImageAnnotatorClient();
 
-/**
- * @desc    Scan an ID card image and extract text
- * @route   POST /api/ocr/scan
- * @access  Private/Hotel
- */
 const scanIdCard = asyncHandler(async (req, res) => {
     if (!req.file) {
         throw new ApiError(400, 'No image file provided for scanning.');
     }
 
     try {
-        const [result] = await visionClient.textDetection(req.file.path);
+        let requestData;
+
+        // 1. FIX: Handle Memory Storage (Buffer)
+        if (req.file.buffer) {
+            requestData = {
+                image: { content: req.file.buffer }
+            };
+        } 
+        // 2. Handle Disk Storage (File Path)
+        else if (req.file.path) {
+            requestData = req.file.path;
+        } else {
+            throw new ApiError(400, 'File upload failed (No buffer or path found).');
+        }
+
+        const [result] = await visionClient.textDetection(requestData);
         const detections = result.textAnnotations;
 
         if (detections && detections.length > 0) {

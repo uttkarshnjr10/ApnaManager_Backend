@@ -1,23 +1,26 @@
-
 const mongoose = require('mongoose');
 
 const accessLogSchema = new mongoose.Schema({
+    // FIX: Dynamic Reference
     user: {
         type: mongoose.Schema.Types.ObjectId,
-        ref: 'User',
         required: true,
+        refPath: 'userModel' // Dynamically point to Hotel/Police/Admin
+    },
+    userModel: {
+        type: String,
+        required: true,
+        enum: ['Hotel', 'Police', 'Regional Admin'] 
     },
     action: {
         type: String,
         required: true,
     },
-    searchQuery: {
-        type: String,
-        trim: true,
-    },
     reason: {
         type: String,
-        trim: true,
+    },
+    searchQuery: {
+        type: String, // Only for 'Guest Search' actions
     },
     timestamp: {
         type: Date,
@@ -25,6 +28,4 @@ const accessLogSchema = new mongoose.Schema({
     },
 });
 
-const AccessLog = mongoose.model('AccessLog', accessLogSchema);
-
-module.exports = AccessLog;
+module.exports = mongoose.model('AccessLog', accessLogSchema);

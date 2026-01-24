@@ -2,38 +2,44 @@
 const mongoose = require('mongoose');
 const dotenv = require('dotenv');
 const logger = require('./src/utils/logger');
-const { RegionalAdminUser } = require('./src/models/User.model');
+
+// 1. FIX: Import the specific RegionalAdmin model
+const RegionalAdmin = require('./src/models/RegionalAdmin.model');
 
 dotenv.config();
 
 const connectDB = async () => {
     try {
         await mongoose.connect(process.env.MONGO_URI);
-        logger.info('mongodb connected for seeding...');
+        logger.info('MongoDB connected for seeding...');
     } catch (err) {
-        logger.error(`error connecting to db for seeding: ${err.message}`);
+        logger.error(`Error connecting to DB for seeding: ${err.message}`);
         process.exit(1);
     }
 };
 
 const importData = async () => {
     try {
-        await RegionalAdminUser.deleteMany();
+        // 2. Clear only the Admin collection
+        await RegionalAdmin.deleteMany();
 
         const adminUser = {
             username: process.env.ADMIN_USERNAME || 'admin',
             email: process.env.ADMIN_EMAIL || 'admin@example.com',
             password: process.env.ADMIN_PASSWORD || 'password123',
-            role: 'Regional Admin',
+            // We don't need to save "role: 'Regional Admin'" in the DB anymore.
+            // The fact that this document exists in the "regionaladmins" collection 
+            // IS the proof of their role.
             passwordChangeRequired: false, 
         };
 
-        await RegionalAdminUser.create(adminUser);
+        // 3. Create (triggers pre-save hook for password hashing)
+        await RegionalAdmin.create(adminUser);
 
-        logger.info('admin user has been successfully created! ');
+        logger.info('Regional Admin user has been successfully created!');
         process.exit();
     } catch (error) {
-        logger.error(`error during seeding: ${error.message}`);
+        logger.error(`Error during seeding: ${error.message}`);
         process.exit(1);
     }
 };

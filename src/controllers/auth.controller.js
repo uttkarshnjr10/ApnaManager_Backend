@@ -1,5 +1,8 @@
 // src/controllers/auth.controller.js
-const { User } = require('../models/User.model');
+const Hotel = require('../models/Hotel.model');
+const Police = require('../models/Police.model');
+const RegionalAdmin = require('../models/RegionalAdmin.model');
+
 const jwt = require('jsonwebtoken');
 const asyncHandler = require('express-async-handler');
 const logger = require('../utils/logger');
@@ -9,6 +12,40 @@ const ApiResponse = require('../utils/ApiResponse');
 const crypto = require('crypto');
 const { sendPasswordResetEmail } = require('../utils/sendEmail');
 
+// Helper to find user in ANY collection
+const findUserByEmail = async (email, loginType) => {
+    
+    // 1. FAST PATH: The user told us who they are
+    if (loginType === 'Hotel') {
+        const user = await Hotel.findOne({ email }).select('+password');
+        return user ? { user, role: 'Hotel' } : { user: null, role: null };
+    }
+    
+    if (loginType === 'Police') {
+        const user = await Police.findOne({ email }).select('+password');
+        return user ? { user, role: 'Police' } : { user: null, role: null };
+    }
+    
+    if (loginType === 'Regional Admin' || loginType === 'RegionalAdmin') {
+        const user = await RegionalAdmin.findOne({ email }).select('+password');
+        return user ? { user, role: 'Regional Admin' } : { user: null, role: null };
+    }
+
+    // 2. FALLBACK (Compatibility): If loginType is missing or invalid, search everything
+    // This makes it robust against Postman/API misuse
+    const [hotel, police, admin] = await Promise.all([
+        Hotel.findOne({ email }).select('+password'),
+        Police.findOne({ email }).select('+password'),
+        RegionalAdmin.findOne({ email }).select('+password')
+    ]);
+
+    if (hotel) return { user: hotel, role: 'Hotel' };
+    if (police) return { user: police, role: 'Police' };
+    if (admin) return { user: admin, role: 'Regional Admin' };
+    
+    return { user: null, role: null };
+};
+
 const generateToken = (id, role, username) => {
     return jwt.sign({ id, role, username }, process.env.JWT_SECRET, { expiresIn: '30d' });
 };
@@ -16,132 +53,104 @@ const generateToken = (id, role, username) => {
 const cookieOptions = {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
-    //sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
     sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
     maxAge: 30 * 24 * 60 * 60 * 1000,
 };
 
+// ================= LOGIN =================
 const loginUser = asyncHandler(async (req, res) => {
-    const { email, password } = req.body;
-    const user = await User.findOne({ email }).select('+password');
+    // Extract loginType from body
+    const { email, password, loginType } = req.body;
 
-    if (!user || !(await user.matchPassword(password))) {
-        throw new ApiError(401, 'invalid email or password');
+    // Validate Input (Basic Robustness)
+    if (!email || !password) {
+        throw new ApiError(400, 'Email and password are required');
     }
 
+    // 1. Find User (Optimized)
+    const { user, role } = await findUserByEmail(email, loginType);
+
+    // 2. Security Check: Invalid Creds
+    if (!user || !(await user.matchPassword(password))) {
+        // Generic error message to prevent User Enumeration
+        throw new ApiError(401, 'Invalid email or password');
+    }
+
+    // 3. Security Check: Role Mismatch (Robustness)
+    // If a hacker tries to login as 'Police' but uses a 'Hotel' email,
+    // findUserByEmail('HotelEmail', 'Police') will return null, so we are safe.
+    
+    // 4. Check Status
     if (user.status === 'Suspended') {
-        throw new ApiError(403, 'your account has been suspended');
+        throw new ApiError(403, 'Your account has been suspended');
     }
 
     if (user.passwordChangeRequired) {
         return res
             .status(202)
-            .json(new ApiResponse(202, { userId: user._id }, 'password change required'));
+            .json(new ApiResponse(202, { userId: user._id, role }, 'Password change required'));
     }
 
-    const token = generateToken(user._id, user.role, user.username);
-    logger.info(`user logged in: ${user.email}`);
+    const token = generateToken(user._id, role, user.username);
+    logger.info(`${role} logged in: ${user.email} (Type: ${loginType || 'Auto'})`);
 
     res.cookie('jwt', token, cookieOptions);
 
     const userData = {
         _id: user._id,
         username: user.username,
-        role: user.role,
+        role: role,
     };
 
-    res
-        .status(200)
-        .json(new ApiResponse(200, userData, 'login successful'));
+    res.status(200).json(new ApiResponse(200, userData, 'Login successful'));
 });
 
-const changePassword = asyncHandler(async (req, res) => {
-    const { userId, newPassword } = req.body;
-
-    if (!userId || !newPassword || newPassword.length < 6) {
-        throw new ApiError(400, 'user id and a new password of at least 6 characters are required');
-    }
-
-    const user = await User.findById(userId);
-    if (!user) {
-        throw new ApiError(404, 'user not found');
-    }
-
-    user.password = newPassword;
-    user.passwordChangeRequired = false;
-    await user.save();
-
-    logger.info(`password changed for user: ${user.email}`);
-    res
-        .status(200)
-        .json(new ApiResponse(200, null, 'password changed successfully. please log in again.'));
-});
-
+// ================= LOGOUT =================
 const logoutUser = asyncHandler(async (req, res) => {
-    // 1. Try to get token from Cookie first, then Header
-    const token = 
-        req.cookies?.jwt || 
-        (req.headers.authorization?.startsWith('Bearer') ? req.headers.authorization.split(' ')[1] : null);
+    // (Logic remains same as your previous optimized version)
+    const token = req.cookies?.jwt || (req.headers.authorization?.startsWith('Bearer') ? req.headers.authorization.split(' ')[1] : null);
 
-    // 2. Redis Blacklisting (Fail-Safe)
     if (token) {
         try {
-            // Using jwt.decode (synchronous) just to read expiration
             const decoded = jwt.decode(token);
-            
-            if (decoded && decoded.exp) {
-                const now = Math.floor(Date.now() / 1000);
-                const expiresIn = decoded.exp - now;
-
-                // Only blacklist if it hasn't expired yet
+            if (decoded?.exp) {
+                const expiresIn = decoded.exp - Math.floor(Date.now() / 1000);
                 if (expiresIn > 0) {
                     await redisClient.set(`blacklist:${token}`, 'true', { EX: expiresIn });
                 }
             }
         } catch (error) {
-            // Don't crash the logout process if Redis fails
             logger.error(`Logout blacklist warning: ${error.message}`);
         }
     }
-
-    // 3. Clear Cookie (Production Safe)
-    res.cookie('jwt', '', { 
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
-        expires: new Date(0) // Set expiration to 1970 (Force Delete)
-    });
-
-    logger.info(`User logged out: ${req.user?.email || 'Anonymous'}`);
-
-    res.status(200).json(new ApiResponse(200, null, 'Logged out successfully'));
+    
+    res.cookie('jwt', '', { ...cookieOptions, maxAge: 0, expires: new Date(0) });
+    res.status(200).json(new ApiResponse(200, null, 'logged out successfully'));
 });
 
+// ================= FORGOT PASSWORD =================
 const forgotPassword = asyncHandler(async (req, res) => {
     const { email } = req.body;
-    if (!email) {
-        throw new ApiError(400, 'please provide an email address');
-    }
+    if (!email) throw new ApiError(400, 'please provide an email address');
 
-    const user = await User.findOne({ email });
+    const { user } = await findUserByEmail(email);
+    
     if (!user) {
-        return res
-            .status(200)
-            .json(new ApiResponse(200, null, 'if an account exists, a reset link has been sent'));
+        // Security: Don't reveal user doesn't exist
+        return res.status(200).json(new ApiResponse(200, null, 'if an account exists, a reset link has been sent'));
     }
 
     const resetToken = user.createPasswordResetToken();
     await user.save({ validateBeforeSave: false });
 
-    const frontendUrl = process.env.CORS_ALLOWED_ORIGINS.split(',')[0];
+    // ... (Email sending logic remains same) ...
+    const frontendUrl = process.env.CORS_ALLOWED_ORIGINS?.split(',')[0] || 'http://localhost:5173';
     const resetUrl = `${frontendUrl}/reset-password?token=${resetToken}`;
 
     try {
         await sendPasswordResetEmail(user.email, user.username, resetUrl);
-        res
-            .status(200)
-            .json(new ApiResponse(200, null, 'if an account exists, a reset link has been sent'));
-    } catch {
+        res.status(200).json(new ApiResponse(200, null, 'if an account exists, a reset link has been sent'));
+    } catch (err) {
         user.passwordResetToken = undefined;
         user.passwordResetExpires = undefined;
         await user.save({ validateBeforeSave: false });
@@ -149,17 +158,19 @@ const forgotPassword = asyncHandler(async (req, res) => {
     }
 });
 
+// ================= RESET PASSWORD =================
 const resetPassword = asyncHandler(async (req, res) => {
     const { token, newPassword } = req.body;
-    if (!token || !newPassword) {
-        throw new ApiError(400, 'token and new password are required');
-    }
-
     const hashedToken = crypto.createHash('sha256').update(token).digest('hex');
-    const user = await User.findOne({
-        passwordResetToken: hashedToken,
-        passwordResetExpires: { $gt: Date.now() },
-    });
+
+    // We must check ALL collections for the token
+    const [hotel, police, admin] = await Promise.all([
+        Hotel.findOne({ passwordResetToken: hashedToken, passwordResetExpires: { $gt: Date.now() } }),
+        Police.findOne({ passwordResetToken: hashedToken, passwordResetExpires: { $gt: Date.now() } }),
+        RegionalAdmin.findOne({ passwordResetToken: hashedToken, passwordResetExpires: { $gt: Date.now() } })
+    ]);
+
+    const user = hotel || police || admin;
 
     if (!user) {
         throw new ApiError(400, 'token is invalid or expired');
@@ -171,9 +182,66 @@ const resetPassword = asyncHandler(async (req, res) => {
     user.passwordChangeRequired = false;
     await user.save();
 
-    res
-        .status(200)
-        .json(new ApiResponse(200, null, 'password reset successfully'));
+    res.status(200).json(new ApiResponse(200, null, 'password reset successfully'));
+});
+
+// ================= CHANGE PASSWORD (Authenticated) =================
+const changePassword = asyncHandler(async (req, res) => {
+    const { userId, newPassword } = req.body; // Warning: Using req.body.userId is risky, use req.user._id if logged in
+    
+    // Better implementation: Use the user from the token (req.user)
+    // But keeping your signature:
+    
+    // We need to know WHICH collection to look in. 
+    // Ideally, this route is protected, so `req.user` is already populated by middleware.
+    
+    const user = req.user; // Use the attached user from middleware
+    if (!user) throw new ApiError(401, 'User not authenticated');
+
+    user.password = newPassword;
+    user.passwordChangeRequired = false;
+    await user.save();
+
+    res.status(200).json(new ApiResponse(200, null, 'password changed successfully'));
+});
+
+const forceChangePassword = asyncHandler(async (req, res) => {
+    console.log("request arrive ");
+    const { userId, newPassword } = req.body;
+
+    if (!userId || !newPassword) {
+        throw new ApiError(400, 'User ID and new password are required');
+    }
+
+    console.log("userId" , userId);
+
+    if (newPassword.length < 6) {
+        throw new ApiError(400, 'Password must be at least 6 characters');
+    }
+
+    // 1. Find User in any collection
+    let user = await Hotel.findById(userId).select('+password');
+    if (!user) user = await Police.findById(userId).select('+password');
+    if (!user) user = await RegionalAdmin.findById(userId).select('+password');
+
+    if (!user) {
+        throw new ApiError(404, 'User not found');
+    }
+
+    // 2. SECURITY CHECK (The most important part)
+    // Only allow this if the DB flag is explicitly TRUE.
+    // This prevents hackers from using this public route to reset random users.
+    if (!user.passwordChangeRequired) {
+        throw new ApiError(403, 'Password change is not required. Please login normally.');
+    }
+
+    // 3. Update Password
+    user.password = newPassword;
+    user.passwordChangeRequired = false; // Close the security gate
+    await user.save();
+
+    logger.info(`Force password change successful for user: ${user.email}`);
+    res.status(200).json(new ApiResponse(200, null, 'Password updated successfully. Please login.'));
 });
 
 module.exports = {
@@ -182,4 +250,5 @@ module.exports = {
     logoutUser,
     forgotPassword,
     resetPassword,
+    forceChangePassword,
 };

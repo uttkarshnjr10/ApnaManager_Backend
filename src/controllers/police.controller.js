@@ -1,57 +1,88 @@
+// src/controllers/police.controller.js
 const Guest = require('../models/Guest.model');
 const AccessLog = require('../models/AccessLog.model');
-const { User, HotelUser } = require('../models/User.model');
+const Hotel = require('../models/Hotel.model'); 
 const Alert = require('../models/Alert.model'); 
 const Remark = require('../models/Remark.model');
 const CaseReport = require('../models/CaseReport.model');
+
+// 👇 CRITICAL IMPORTS FOR POPULATE 👇
+const Police = require('../models/Police.model');
+const RegionalAdmin = require('../models/RegionalAdmin.model');
+
 const asyncHandler = require('express-async-handler');
 const logger = require('../utils/logger');
 const ApiError = require('../utils/ApiError');
 const ApiResponse = require('../utils/ApiResponse');
 const { generateSignedUrl } = require('../utils/cloudinary');
 
+// --- 1. SEARCH GUESTS ---
 const searchGuests = asyncHandler(async (req, res) => {
-    const { query, searchBy, reason } = req.body;
+    const { query, searchBy, reason, page = 1, limit = 20 } = req.body;
 
     if (!query || !searchBy || !reason) {
-        throw new ApiError(400, 'search query, type (searchby), and reason are required');
+        throw new ApiError(400, 'Search query, type (searchBy), and reason are required');
     }
 
-    await AccessLog.create({
-        user: req.user._id,
-        action: 'Guest Search',
-        searchQuery: `${searchBy}: ${query}`,
-        reason: reason,
+    // Non-Blocking Audit Log
+    setImmediate(async () => {
+        try {
+            await AccessLog.create({
+                user: req.user._id,
+                userModel: 'Police',
+                action: 'Guest Search',
+                searchQuery: `${searchBy}: ${query}`,
+                reason: reason,
+            });
+        } catch (err) {
+            logger.error(`Failed to log search access: ${err.message}`);
+        }
     });
 
     let searchCriteria = {};
-    const regex = new RegExp(query, 'i');
+    const safeQuery = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); 
 
     switch (searchBy) {
         case 'name':
-            searchCriteria['primaryGuest.name'] = regex;
+            searchCriteria['primaryGuest.name'] = { $regex: new RegExp(safeQuery, 'i') }; 
             break;
         case 'phone':
-            searchCriteria['primaryGuest.phone'] = regex;
+            searchCriteria['primaryGuest.phone'] = { $regex: new RegExp(safeQuery, 'i') };
             break;
         case 'id':
-            searchCriteria['idNumber'] = regex;
+             searchCriteria['idNumber'] = { $regex: new RegExp(safeQuery, 'i') };
             break;
         default:
-            throw new ApiError(400, "invalid searchby value. use 'name', 'phone', or 'id'");
+            throw new ApiError(400, "Invalid searchBy value. Use 'name', 'phone', or 'id'");
     }
 
-    const guests = await Guest.find(searchCriteria).populate('hotel', 'username hotelName city');
+    const totalDocs = await Guest.countDocuments(searchCriteria);
+    const guests = await Guest.find(searchCriteria)
+        .sort({ registrationTimestamp: -1 })
+        .skip((page - 1) * limit)
+        .limit(parseInt(limit))
+        .populate({ path: 'hotel', select: 'username hotelName city', model: 'Hotel' })
+        .lean();
 
-    logger.info(`police user ${req.user.username} searched for guests by ${searchBy}`);
-    res
-    .status(200)
-    .json(new ApiResponse(200, guests));
+    const guestsWithSignedUrls = guests.map(guest => ({
+        ...guest,
+        livePhotoURL: guest.livePhoto?.public_id ? generateSignedUrl(guest.livePhoto.public_id) : null
+    }));
+
+    res.status(200).json(new ApiResponse(200, {
+        guests: guestsWithSignedUrls,
+        pagination: {
+            totalDocs,
+            page: parseInt(page),
+            totalPages: Math.ceil(totalDocs / limit),
+            hasNextPage: page * limit < totalDocs
+        }
+    }));
 });
 
+// --- 2. DASHBOARD DATA ---
 const getDashboardData = asyncHandler(async (req, res) => {
-    const hotelCount = await HotelUser.countDocuments();
-
+    const hotelCount = await Hotel.countDocuments();
     const startOfToday = new Date();
     startOfToday.setHours(0, 0, 0, 0);
 
@@ -70,11 +101,10 @@ const getDashboardData = asyncHandler(async (req, res) => {
         alerts: recentAlerts,
     };
 
-    res
-    .status(200)
-    .json(new ApiResponse(200, dashboardData));
+    res.status(200).json(new ApiResponse(200, dashboardData));
 });
 
+// --- 3. ALERTS ---
 const createAlert = asyncHandler(async (req, res) => {
     const { guestId, reason } = req.body;
     if (!guestId || !reason) {
@@ -90,29 +120,26 @@ const createAlert = asyncHandler(async (req, res) => {
         guest: guestId,
         reason,
         createdBy: req.user._id,
+        creatorModel: 'Police', 
     });
 
     await AccessLog.create({
         user: req.user._id,
+        userModel: 'Police',
         action: 'Alert Created',
         reason: `flagged guest ${guestExists.primaryGuest.name} for: ${reason}`,
     });
 
-    logger.info(`police user ${req.user.username} created an alert for guest ${guestId}`);
-    res
-    .status(201)
-    .json(new ApiResponse(201, alert, 'alert created successfully'));
+    res.status(201).json(new ApiResponse(201, alert, 'alert created successfully'));
 });
 
 const getAlerts = asyncHandler(async (req, res) => {
     const alerts = await Alert.find()
         .populate('guest', 'primaryGuest.name idNumber')
-        .populate('createdBy', 'username station')
+        .populate('createdBy', 'username station') 
         .sort({ createdAt: -1 });
 
-    res
-    .status(200)
-    .json(new ApiResponse(200, alerts));
+    res.status(200).json(new ApiResponse(200, alerts));
 });
 
 const resolveAlert = asyncHandler(async (req, res) => {
@@ -124,50 +151,64 @@ const resolveAlert = asyncHandler(async (req, res) => {
     alert.status = 'Resolved';
     const updatedAlert = await alert.save();
     
-    logger.info(`police user ${req.user.username} resolved alert ${req.params.id}`);
-    res
-    .status(200)
-    .json(new ApiResponse(200, updatedAlert, 'alert resolved'));
+    res.status(200).json(new ApiResponse(200, updatedAlert, 'alert resolved'));
 });
 
+// --- 4. GUEST HISTORY (ROBUST) ---
 const getGuestHistory = asyncHandler(async (req, res) => {
     const guestId = req.params.id;
     const guest = await Guest.findById(guestId);
     if (!guest) {
-        throw new ApiError(404, 'guest not found');
+        throw new ApiError(404, 'Guest not found');
     }
 
+    // 1. Find all visits by this person (matching ID Number)
     const stayHistory = await Guest.find({ idNumber: guest.idNumber })
-        .populate('hotel', 'username hotelName city')
-        .sort({ 'stayDetails.checkIn': -1 });
+        .populate({ path: 'hotel', select: 'username hotelName city', model: 'Hotel' })
+        .sort({ 'stayDetails.checkIn': -1 })
+        .lean();
 
     const guestIds = stayHistory.map(g => g._id);
 
+    // 2. Fetch Alerts (Safely populated using refPath)
     const alerts = await Alert.find({ guest: { $in: guestIds } })
-        .populate('createdBy', 'username');
+        .populate('createdBy', 'username rank station') 
+        .sort({ createdAt: -1 })
+        .lean();
 
+    // 3. Fetch Remarks
     const remarks = await Remark.find({ guest: { $in: guestIds } })
-        .populate('officer', 'username')
-        .sort({ createdAt: -1 });
+        .populate('officer', 'username rank')
+        .sort({ createdAt: -1 })
+        .lean();
 
+    // 4. Helper for signing URLs
     const signImages = (g) => {
-        const doc = g.toObject ? g.toObject() : g;
+        if (!g) return null;
         return {
-            ...doc,
-            idImageFront: doc.idImageFront
-                ? { ...doc.idImageFront, url: generateSignedUrl(doc.idImageFront.public_id) }
-                : undefined,
-            idImageBack: doc.idImageBack
-                ? { ...doc.idImageBack, url: generateSignedUrl(doc.idImageBack.public_id) }
-                : undefined,
-            livePhoto: doc.livePhoto
-                ? { ...doc.livePhoto, url: generateSignedUrl(doc.livePhoto.public_id) }
-                : undefined,
+            ...g,
+            idImageFront: g.idImageFront?.public_id 
+                ? { ...g.idImageFront, url: generateSignedUrl(g.idImageFront.public_id) } : null,
+            idImageBack: g.idImageBack?.public_id 
+                ? { ...g.idImageBack, url: generateSignedUrl(g.idImageBack.public_id) } : null,
+            livePhotoURL: g.livePhoto?.public_id 
+                ? generateSignedUrl(g.livePhoto.public_id) : null,
         };
     };
 
+    setImmediate(async () => {
+        try {
+            await AccessLog.create({
+                user: req.user._id,
+                userModel: 'Police',
+                action: 'View History',
+                reason: `Viewed history of ${guest.primaryGuest.name} (${guest.idNumber})`
+            });
+        } catch(e) { console.error("Audit Log Fail", e); }
+    });
+
     const historyData = {
-        primaryGuest: signImages(guest),
+        primaryGuest: signImages(guest.toObject ? guest.toObject() : guest),
         stayHistory: stayHistory.map(signImages),
         alerts,
         remarks
@@ -176,6 +217,7 @@ const getGuestHistory = asyncHandler(async (req, res) => {
     res.status(200).json(new ApiResponse(200, historyData));
 });
 
+// --- 5. REMARKS (RESTORED) ---
 const addRemark = asyncHandler(async (req, res) => {
     const guestId = req.params.id;
     const { text } = req.body;
@@ -186,24 +228,28 @@ const addRemark = asyncHandler(async (req, res) => {
     const remark = await Remark.create({
         guest: guestId,
         officer: req.user._id,
+        officerModel: 'Police', 
         text,
     });
     
+    // We populate just for the immediate response
     const populatedRemark = await remark.populate('officer', 'username');
-    res
-    .status(201)
-    .json(new ApiResponse(201, populatedRemark, 'remark added successfully'));
+    
+    res.status(201).json(new ApiResponse(201, populatedRemark, 'remark added successfully'));
 });
 
+// --- 6. CASE REPORTS ---
 const createCaseReport = asyncHandler(async (req, res) => {
     const { title, summary, guestId } = req.body;
     if (!title || !summary) {
-        throw new ApiError(400, 'Title and summary are required for the report');
+        throw new ApiError(400, 'Title and summary are required');
     }
+    
     const report = await CaseReport.create({
         title,
         summary,
         officer: req.user._id,
+        officerModel: 'Police', 
         guest: guestId || null,
     });
     res.status(201).json(new ApiResponse(201, report, 'Case report filed successfully'));
@@ -218,7 +264,7 @@ const getCaseReports = asyncHandler(async (req, res) => {
 });
 
 const getHotelList = asyncHandler(async (req, res) => {
-    const hotels = await HotelUser.find({ status: 'Active' })
+    const hotels = await Hotel.find({ status: 'Active' })
         .select('hotelName city')
         .sort('hotelName');
     res.status(200).json(new ApiResponse(200, hotels));
@@ -242,10 +288,10 @@ const advancedGuestSearch = asyncHandler(async (req, res) => {
     } else if (city || state) {
         if (city) hotelQuery.city = new RegExp(city, 'i');
         if (state) hotelQuery.state = new RegExp(state, 'i');
-       
-        const matchingHotels = await HotelUser.find(hotelQuery).select('_id');
+        
+        const matchingHotels = await Hotel.find(hotelQuery).select('_id');
         const hotelIds = matchingHotels.map(h => h._id);
-       
+        
         query.hotel = { $in: hotelIds };
     }
     const guests = await Guest.find(query)

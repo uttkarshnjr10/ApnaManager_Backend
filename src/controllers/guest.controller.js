@@ -1,6 +1,10 @@
 const mongoose = require('mongoose');
 const Guest = require('../models/Guest.model');
-const { HotelUser, PoliceUser } = require('../models/User.model');
+// 1. NEW IMPORTS: Separate models instead of User.model
+const Hotel = require('../models/Hotel.model'); 
+const Police = require('../models/Police.model');
+const AccessLog = require('../models/AccessLog.model');
+
 const asyncHandler = require('express-async-handler');
 const logger = require('../utils/logger');
 const generateGuestPDF = require('../utils/pdfGenerator');
@@ -14,6 +18,8 @@ const Notification = require('../models/Notification.model');
 const PoliceStation = require('../models/PoliceStation.model');
 const { uploadToCloudinary } = require('../utils/cloudinary');
 
+const { getIO } = require('../config/socket');
+
 const checkWatchlistAndNotify = async (guest, hotel) => {
     try {
         const idNumber = guest.idNumber;
@@ -21,7 +27,7 @@ const checkWatchlistAndNotify = async (guest, hotel) => {
 
         const match = await Watchlist.findOne({
             $or: [{ value: idNumber }, { value: phone }]
-        }).populate('addedBy', 'username');
+        }).populate('addedBy', 'username'); 
 
         if (!match) {
             return;
@@ -31,12 +37,16 @@ const checkWatchlistAndNotify = async (guest, hotel) => {
 
         const alertReason = `AUTOMATIC FLAG: Guest matched watchlist. Reason: "${match.reason}" (Match on: ${match.type})`;
         
-        await Alert.create({
+        const newAlert = await Alert.create({
             guest: guest._id,
             reason: alertReason,
             createdBy: match.addedBy._id,
+            creatorModel: match.addedByModel, 
             status: 'Open',
         });
+
+        // Populate guest details for the socket payload (so frontend can show name immediately)
+        const populatedAlert = await newAlert.populate('guest', 'primaryGuest.name idNumber stayDetails.roomNumber');
 
         const hotelPincode = hotel.pinCode;
         if (!hotelPincode) {
@@ -50,7 +60,8 @@ const checkWatchlistAndNotify = async (guest, hotel) => {
             return;
         }
 
-        const officers = await PoliceUser.find({ policeStation: station._id });
+        const officers = await Police.find({ policeStation: station._id });
+        
         if (officers.length === 0) {
             logger.warn(`No officers found for station ${station.name}.`);
             return;
@@ -62,6 +73,7 @@ const checkWatchlistAndNotify = async (guest, hotel) => {
             return Notification.create({
                 recipientStation: station._id,
                 recipientUser: officer._id,
+                recipientModel: 'Police', 
                 message: notificationMessage,
                 isRead: false,
             });
@@ -70,6 +82,38 @@ const checkWatchlistAndNotify = async (guest, hotel) => {
         await Promise.all(notificationPromises);
         logger.info(`Sent ${officers.length} notifications to ${station.name} about watchlist match.`);
 
+        // ============================================================
+        // 🚀 REAL-TIME SOCKET EMIT
+        // ============================================================
+        try {
+            const io = getIO();
+            
+            // 1. Notify Specific Police Station Room
+            const stationRoom = `station_${station._id.toString()}`;
+            io.to(stationRoom).emit('NEW_ALERT', {
+                type: 'WATCHLIST_HIT',
+                message: notificationMessage,
+                alert: populatedAlert,
+                hotelName: hotel.hotelName,
+                timestamp: new Date()
+            });
+            logger.info(`Socket Event emitted to room: ${stationRoom}`);
+
+            // 2. Notify Global Admin Room
+            io.to('admin_global').emit('NEW_ALERT', {
+                type: 'WATCHLIST_HIT_ADMIN',
+                message: `CRITICAL: Watchlist hit in ${station.city}`,
+                alert: populatedAlert,
+                stationName: station.name,
+                timestamp: new Date()
+            });
+
+        } catch (socketError) {
+            logger.error(`Socket Emit Failed: ${socketError.message}`);
+            // Don't crash the request just because socket failed
+        }
+        // ============================================================
+
     } catch (error) {
         logger.error(`Failed to execute watchlist check: ${error.message}`);
     }
@@ -77,7 +121,8 @@ const checkWatchlistAndNotify = async (guest, hotel) => {
 
 const registerGuest = asyncHandler(async (req, res) => {
     const hotelUserId = req.user._id;
-    const hotel = await HotelUser.findById(hotelUserId);
+    // 5. Use Hotel Model
+    const hotel = await Hotel.findById(hotelUserId);
     if (!hotel) {
         throw new ApiError(404, 'hotel user not found');
     }
@@ -103,7 +148,7 @@ const registerGuest = asyncHandler(async (req, res) => {
         return value ?? fallback;
     };
 
-    // ✅ NEW OBJECT STRUCTURE (PRIMARY GUEST)
+    // Extract images with Public IDs
     const idImageFront = {
         url: filesMap['idImageFront']?.url,
         public_id: filesMap['idImageFront']?.public_id
@@ -165,20 +210,17 @@ const registerGuest = asyncHandler(async (req, res) => {
                 ? {
                     url: filesMap[`accompanying_${index}_idImageFront`].url,
                     public_id: filesMap[`accompanying_${index}_idImageFront`].public_id
-                }
-                : undefined,
+                } : undefined,
             idImageBack: filesMap[`accompanying_${index}_idImageBack`]
                 ? {
                     url: filesMap[`accompanying_${index}_idImageBack`].url,
                     public_id: filesMap[`accompanying_${index}_idImageBack`].public_id
-                }
-                : undefined,
+                } : undefined,
             livePhoto: filesMap[`accompanying_${index}_livePhoto`]
                 ? {
                     url: filesMap[`accompanying_${index}_livePhoto`].url,
                     public_id: filesMap[`accompanying_${index}_livePhoto`].public_id
-                }
-                : undefined,
+                } : undefined,
         };
 
         if (!guest.dob) {
@@ -211,8 +253,6 @@ const registerGuest = asyncHandler(async (req, res) => {
 
     checkWatchlistAndNotify(guest, hotel);
 });
-
-
 
 const calculateAge = (dob) => {
     if (!dob) return 99; 
@@ -268,7 +308,12 @@ const getTodaysGuests = asyncHandler(async (req, res) => {
 const checkoutGuest = asyncHandler(async (req, res) => {
     const guestId = req.params.id;
     
-    const guest = await Guest.findById(guestId).populate('hotel', 'username email hotelName city');
+    // 1. FIX: Populate 'hotel' explicitly using the Hotel model
+    const guest = await Guest.findById(guestId).populate({
+        path: 'hotel',
+        model: 'Hotel', 
+        select: 'username email hotelName city rooms'
+    });
 
     if (!guest) {
         throw new ApiError(404, 'guest not found');
@@ -278,45 +323,34 @@ const checkoutGuest = asyncHandler(async (req, res) => {
         throw new ApiError(400, 'this guest has already been checked out');
     }
 
+    // 2. Update Status
     guest.status = 'Checked-Out';
+    guest.stayDetails.checkOut = new Date(); 
     await guest.save();
 
-    try {
-        const hotel = await HotelUser.findById(guest.hotel._id);
-        if (hotel) {
-            const roomNumber = guest.stayDetails.roomNumber;
-            const roomToVacate = hotel.rooms.find(r => r.roomNumber === roomNumber);
-            
-            if (roomToVacate) {
-                roomToVacate.status = 'Vacant';
-                roomToVacate.guestId = null;
-                await hotel.save();
-                logger.info(`Room ${roomNumber} is now vacant.`);
-            } else {
-                logger.warn(`Could not find room ${roomNumber} for hotel ${hotel.username} during checkout.`);
+    // 3. Vacate Room logic
+    if (guest.hotel) {
+        try {
+            const roomIndex = guest.hotel.rooms.findIndex(r => r.roomNumber === guest.stayDetails.roomNumber);
+            if (roomIndex !== -1) {
+                guest.hotel.rooms[roomIndex].status = 'Vacant';
+                guest.hotel.rooms[roomIndex].guestId = null;
+                await guest.hotel.save();
             }
+        } catch (roomError) {
+            // logger.error(...)
         }
-    } catch (roomError) {
-        logger.error(`Failed to update room status on checkout: ${roomError.message}`);
     }
 
-    logger.info(`guest ${guest.customerId} checked out by ${req.user.username}`);
-
-    res.status(200).json(new ApiResponse(200, null, 'guest checked out successfully. receipt has been emailed.'));
-
-    setImmediate(async () => {
-        try {
-            const pdfBuffer = await generateGuestPDF(guest);
-            const guestEmail = guest.primaryGuest.email;
-            const hotelEmail = guest.hotel.email;
-
-            if (guestEmail && hotelEmail) {
-                await sendCheckoutEmail(guestEmail, hotelEmail, guest, pdfBuffer);
-            }
-        } catch (error) {
-            logger.error(`Failed to send checkout email for guest ${guest.customerId}:`, error);
-        }
+    // 4. FIX: AccessLog creation with correct userModel
+    await AccessLog.create({
+        user: req.user._id,
+        userModel: 'Hotel', 
+        action: 'Guest Checkout',
+        reason: `Checked out guest ${guest.primaryGuest.name}`
     });
+
+    res.status(200).json(new ApiResponse(200, null, 'Guest checked out successfully.'));
 });
 
 const generateGuestReport = asyncHandler(async (req, res) => {
