@@ -1,92 +1,92 @@
 
-# 🛡️ ApnaManager Backend 
+# 🛡️ ApnaManager Backend
 
-> An enterprise-grade Hotel Management & Security Verification System facilitating seamless, secure data exchange between Hotels and Law Enforcement Agencies.
+> A Hotel Management & Security Verification System facilitating seamless, secure data exchange between Hotels and Law Enforcement Agencies.
 
 [![Node.js](https://img.shields.io/badge/Node.js-18.x-green?style=for-the-badge&logo=node.js)](https://nodejs.org/)
 [![Express.js](https://img.shields.io/badge/Express.js-4.x-white?style=for-the-badge&logo=express)](https://expressjs.com/)
 [![MongoDB](https://img.shields.io/badge/MongoDB-6.x-green?style=for-the-badge&logo=mongodb)](https://www.mongodb.com/)
-[![Redis](https://img.shields.io/badge/Redis-Auth%20Token%20Blacklisting-red?style=for-the-badge&logo=redis)](https://redis.io/)
-[![Docker](https://img.shields.io/badge/Docker-Containerized-blue?style=for-the-badge&logo=docker)](https://www.docker.com/)
+[![Socket.io](https://img.shields.io/badge/Socket.io-RealTime-black?style=for-the-badge&logo=socket.io)](https://socket.io/)
+[![CI/CD](https://img.shields.io/badge/GitHub%20Actions-CI%2FCD-blue?style=for-the-badge&logo=githubactions)](https://github.com/features/actions)
 
 ---
 
 ## 📖 Table of Contents
 - [System Overview](#-system-overview)
-- [Tech Stack & Architecture](#-tech-stack--architecture)
+- [Tech Stack](#-tech-stack)
 - [Key Features](#-key-features)
-- [API Documentation](#-api-documentation)
+- [System Architecture](#-system-architecture)
 - [Installation & Setup](#-installation--setup)
 - [Project Structure](#-project-structure)
-- [Contributing](#-contributing)
 
 ---
 
 ## 🔍 System Overview
 
-GuestGuard is a robust backend solution designed to digitize hotel guest entries and automate police verification processes. It eliminates manual paperwork by providing a secure digital pipeline.
+ApnaManager is a robust backend solution designed to digitize hotel guest entries and automate police verification processes. It eliminates manual paperwork by providing a secure, real-time digital pipeline.
 
 **Core Roles:**
-1.  **Hotel Managers:** Fast guest check-in with image handling, report generation, and room management.
-2.  **Police/Authorities:** Real-time dashboard to monitor guest entries, manage watchlists, and receive alerts.
-3.  **Admin:** System-wide oversight and user management.
+1.  **Hotel Managers:** Fast guest check-in, real-time room management, and automated checkout.
+2.  **Police/Authorities:** Instant notifications for suspicious guests, powerful search engine, and history tracking.
+3.  **Admin:** System-wide oversight, user management, and audit logs.
 
 ---
 
-## 🛠 Tech Stack & Architecture
-
-The system is built on a **Monolithic Architecture**, optimized for speed and data integrity.
+## 🛠 Tech Stack
 
 | Category | Technologies |
 |----------|--------------|
 | **Runtime** | Node.js (v18+) |
 | **Framework** | Express.js |
 | **Database** | MongoDB (Mongoose ORM) |
-| **Caching** | Redis (JWT Blacklisting & Session Security) |
+| **Real-Time** | Socket.io (Instant Alerts) |
 | **Authentication** | JWT via HttpOnly Cookies (XSS Protection) |
-| **File Storage** | Cloudinary (High-performance Parallel Streaming) |
-| **Email Service** | SendGrid |
-| **DevOps** | Docker, Docker Compose |
-
-### 🏗 System Architecture
-This diagram illustrates the actual data flow in the deployed environment:
-
-```mermaid
-graph TD
-    Client[Frontend Client / React] -->|HTTPS + HttpOnly Cookie| API[Express.js Backend API]
-    
-    subgraph "Core Backend Services"
-        API -->|Read/Write Data| DB[(MongoDB)]
-        API -->|Token Blacklist & Caching| Cache[(Redis)]
-    end
-    
-    subgraph "External Services"
-        API -->|Parallel Image Streaming| Cloud[Cloudinary]
-        API -->|Transactional Emails| SMTP[SendGrid]
-    end
-
-```
+| **File Storage** | Cloudinary (Secure Image Storage) |
+| **Testing** | Jest & Supertest |
+| **DevOps** | GitHub Actions (CI/CD), Docker |
 
 ---
 
 ## 🚀 Key Features
 
 ### 🔐 Enterprise Security
-
-* **HttpOnly Cookie Authentication:** Tokens are handled by the browser/server, preventing XSS attacks (no local storage).
-* **Redis-Based Logout:** Immediate token invalidation using a Redis blacklist.
 * **Role-Based Access Control (RBAC):** Strict permission layering for Hotel, Police, and Admin users.
+* **Secure Authentication:** JWT tokens stored in HttpOnly cookies to prevent XSS attacks.
+* **Audit Logs:** Tracks every critical action (Search, Alert, Checkout) for accountability.
 
-### ⚡ High Performance
+### ⚡ Performance & Optimization
+* **MongoDB Text Indexing:** High-speed fuzzy search for Guest Names and Phone numbers (handles 10k+ records easily).
+* **Real-Time Alerts:** Uses **Socket.io** to instantly notify Police dashboards when a flagged guest checks in. No page refresh required.
+* **Optimized Queries:** Uses `lean()` queries and selective population to reduce server load.
 
-* **Parallel Upload Pipeline:** Guest registration images (ID Front, Back, Live Photo) are streamed to Cloudinary simultaneously using `Promise.all` and memory buffering, significantly reducing wait times.
-* **Optimized Database Queries:** Indexed fields for fast search and report generation.
+### 🏭 DevOps & Quality
+* **CI/CD Pipeline:** Automated GitHub Actions workflow that runs Linting and Tests (`npm test`) on every push.
+* **Code Standards:** Enforced using ESLint, Prettier, and Husky hooks to prevent bad commits.
+* **Robust Error Handling:** Centralized error middleware with standardized API responses.
 
-### 🏨 Core Logic
+---
 
-* **Real-Time Watchlist:** Automatically checks guest ID numbers against a police watchlist and triggers alerts.
-* **Automated Reporting:** Generates downloadable PDF/CSV reports for daily police submission.
-* **Room Management:** Real-time occupancy tracking.
+## 🏗 System Architecture
+
+The system follows a scalable **MVC Architecture** with Event-Driven components.
+
+```mermaid
+graph TD
+    Client[Frontend / React] -->|HTTPS + HttpOnly Cookie| API[Express Backend]
+    
+    subgraph "Core Services"
+        API -->|Read/Write| DB[(MongoDB)]
+        API -->|Events & Alerts| Socket[Socket.io Server]
+    end
+    
+    subgraph "External"
+        API -->|Image Storage| Cloud[Cloudinary]
+        API -->|Email| SMTP[SendGrid]
+    end
+
+    Socket -->|Push Notification| Client
+
+```
 
 ---
 
@@ -168,14 +168,13 @@ src/
 
 ## 🤝 Contributing
 
-Contributions are welcome! We follow strict **Clean Code** principles.
+We follow Clean Code principles enforced by CI/CD.
 
-### Guidelines for Contributors
+Run Tests: Ensure npm test passes before pushing.
 
-1. **Architecture:** Keep controllers thin; move complex logic to services or models where possible.
-2. **Error Handling:** Do not use `try-catch` blocks manually in controllers. Use the `asyncHandler` wrapper and `ApiError` class.
-3. **Variable Naming:** Use descriptive, camelCase names (e.g., `guestRegistrationDate` instead of `d`).
-4. **Commits:** Use conventional commit messages.
+Linting: Fix any ESLint errors.
+
+Commits: Use conventional messages (e.g., feat: add guest search).
 
 ### Steps
 
