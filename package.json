@@ -5,11 +5,11 @@
   "scripts": {
     "dev": "nodemon --env-file .env server.js",
     "start": "node server.js",
-    "seed": "node seeder.js", 
+    "seed": "node -r dotenv/config src/scripts/seeder.js", 
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
-    "test": "jest --detectOpenHandles",
+    "test": "jest --detectOpenHandles --runInBand",
     "prepare": "husky install || true"
   },
   "dependencies": {

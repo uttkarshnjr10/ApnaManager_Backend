@@ -121,7 +121,6 @@ const registerUser = asyncHandler(async (req, res) => {
     }
 });
 
-// src/controllers/user.controller.js
 
 const getUserProfile = asyncHandler(async (req, res) => {
     // req.user is the Mongoose document attached by the middleware
