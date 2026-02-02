@@ -15,6 +15,7 @@ const autocompleteRoutes = require('./autocomplete.routes');
 const paymentRoutes = require('./payment.routes.js');
 const roomRoutes = require('./room.routes.js');
 const watchlistRoutes = require('./watchlist.routes.js');
+const weatherRoutes = require('./weather.routes');
 
 router.use('/auth', authRoutes);
 router.use('/guests', guestRoutes);
@@ -29,5 +30,6 @@ router.use('/autocomplete', autocompleteRoutes);
 router.use('/payments', paymentRoutes);
 router.use('/rooms', roomRoutes);
 router.use('/watchlist', watchlistRoutes);
+router.use('/weather', weatherRoutes);
 
 module.exports = router;

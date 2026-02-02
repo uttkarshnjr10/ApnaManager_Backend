@@ -1,10 +1,10 @@
 // seeder.js
 const mongoose = require('mongoose');
 const dotenv = require('dotenv');
-const logger = require('./src/utils/logger');
+const logger = require('../utils/logger');
 
 // 1. FIX: Import the specific RegionalAdmin model
-const RegionalAdmin = require('./src/models/RegionalAdmin.model');
+const RegionalAdmin = require('../models/RegionalAdmin.model');
 
 dotenv.config();
 

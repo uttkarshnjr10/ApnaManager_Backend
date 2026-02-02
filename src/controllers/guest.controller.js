@@ -305,14 +305,15 @@ const getTodaysGuests = asyncHandler(async (req, res) => {
     res.status(200).json(new ApiResponse(200, guests));
 });
 
+
 const checkoutGuest = asyncHandler(async (req, res) => {
     const guestId = req.params.id;
     
-    // 1. FIX: Populate 'hotel' explicitly using the Hotel model
+    //  Fetch Guest with Hotel details
     const guest = await Guest.findById(guestId).populate({
         path: 'hotel',
         model: 'Hotel', 
-        select: 'username email hotelName city rooms'
+        select: 'username email hotelName city rooms address phone' // Added fields for PDF
     });
 
     if (!guest) {
@@ -323,12 +324,12 @@ const checkoutGuest = asyncHandler(async (req, res) => {
         throw new ApiError(400, 'this guest has already been checked out');
     }
 
-    // 2. Update Status
+    //  Update Status
     guest.status = 'Checked-Out';
     guest.stayDetails.checkOut = new Date(); 
     await guest.save();
 
-    // 3. Vacate Room logic
+    //  Vacate Room 
     if (guest.hotel) {
         try {
             const roomIndex = guest.hotel.rooms.findIndex(r => r.roomNumber === guest.stayDetails.roomNumber);
@@ -338,11 +339,11 @@ const checkoutGuest = asyncHandler(async (req, res) => {
                 await guest.hotel.save();
             }
         } catch (roomError) {
-            // logger.error(...)
+            logger.error(`Failed to vacate room: ${roomError.message}`);
         }
     }
 
-    // 4. FIX: AccessLog creation with correct userModel
+    // Access Log
     await AccessLog.create({
         user: req.user._id,
         userModel: 'Hotel', 
@@ -350,8 +351,26 @@ const checkoutGuest = asyncHandler(async (req, res) => {
         reason: `Checked out guest ${guest.primaryGuest.name}`
     });
 
-    res.status(200).json(new ApiResponse(200, null, 'Guest checked out successfully.'));
+    try {
+        // Generate PDF Buffer
+        const pdfBuffer = await generateGuestPDF(guest);
+
+        // Send Email with PDF attachment
+        await sendCheckoutEmail(
+            guest.primaryGuest.email, // To Guest
+            guest.primaryGuest.name,
+            guest.hotel.hotelName,
+            pdfBuffer
+        );
+        logger.info(`Checkout email sent to ${guest.primaryGuest.email}`);
+    } catch (emailError) {
+        logger.error(`Checkout Email/PDF failed: ${emailError.message}`);
+        // We do NOT throw error here, because the checkout itself succeeded.
+    }
+
+    res.status(200).json(new ApiResponse(200, null, 'Guest checked out successfully. Email sent.'));
 });
+
 
 const generateGuestReport = asyncHandler(async (req, res) => {
     const hotelUserId = req.user._id;
