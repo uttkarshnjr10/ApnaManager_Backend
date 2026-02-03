@@ -57,49 +57,52 @@ const cookieOptions = {
     maxAge: 30 * 24 * 60 * 60 * 1000,
 };
 
-// ================= LOGIN =================
+// Login User
 const loginUser = asyncHandler(async (req, res) => {
-    // Extract loginType from body
+    // 1. Extract & Validate
     const { email, password, loginType } = req.body;
 
-    // Validate Input (Basic Robustness)
     if (!email || !password) {
         throw new ApiError(400, 'Email and password are required');
     }
 
-    // 1. Find User (Optimized)
+    // 2. Find User
     const { user, role } = await findUserByEmail(email, loginType);
 
-    // 2. Security Check: Invalid Creds
+    // 3. Security Check: Invalid Credentials
     if (!user || !(await user.matchPassword(password))) {
-        // Generic error message to prevent User Enumeration
         throw new ApiError(401, 'Invalid email or password');
     }
 
-    // 3. Security Check: Role Mismatch (Robustness)
-    // If a hacker tries to login as 'Police' but uses a 'Hotel' email,
-    // findUserByEmail('HotelEmail', 'Police') will return null, so we are safe.
-    
-    // 4. Check Status
+    // 4. Security Check: Account Status
     if (user.status === 'Suspended') {
         throw new ApiError(403, 'Your account has been suspended');
     }
 
+    // 5. Check Password Reset Requirement
     if (user.passwordChangeRequired) {
         return res
             .status(202)
             .json(new ApiResponse(202, { userId: user._id, role }, 'Password change required'));
     }
 
+    // 6. Generate Token
     const token = generateToken(user._id, role, user.username);
+    
     logger.info(`${role} logged in: ${user.email} (Type: ${loginType || 'Auto'})`);
 
+    // 7. Set Secure Cookie (Primary Security Layer)
+    // We keep this! It allows valid cross-site requests if the browser permits it.
     res.cookie('jwt', token, cookieOptions);
 
+    // 8. Prepare Response (Secondary Persistence Layer)
+    // We send the token here so the Frontend can save it to localStorage.
+    // This FIXES the "Logout on Refresh" issue on Vercel/Render setups.
     const userData = {
         _id: user._id,
         username: user.username,
         role: role,
+        token: token, 
     };
 
     res.status(200).json(new ApiResponse(200, userData, 'Login successful'));
