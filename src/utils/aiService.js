@@ -4,9 +4,9 @@ const logger = require('./logger');
 // 1. Debug Log: Check if Key exists (Don't print the full key for security)
 const apiKey = process.env.GEMINI_API_KEY;
 if (!apiKey) {
-  console.error('❌ CRITICAL: GEMINI_API_KEY is missing in .env file!');
+  // console.error('❌ CRITICAL: GEMINI_API_KEY is missing in .env file!');
 } else {
-  console.log(`✅ Gemini Service Initialized (Key ends with: ...${apiKey.slice(-4)})`);
+  //console.log(`✅ Gemini Service Initialized (Key ends with: ...${apiKey.slice(-4)})`);
 }
 
 const genAI = new GoogleGenerativeAI(apiKey);
@@ -54,18 +54,18 @@ const generateDailySummary = async (stats, role) => {
             Write a 3-sentence summary. Do not use markdown. Keep it plain text.
         `;
 
-    console.log(`🤖 Sending Prompt to AI (${role}):`, prompt.substring(0, 100) + '...'); // Log first 100 chars
+    // console.log(`🤖 Sending Prompt to AI (${role}):`, prompt.substring(0, 100) + '...'); // Log first 100 chars
 
     const result = await model.generateContent(prompt);
     const response = await result.response;
     const text = response.text();
 
-    console.log('✅ AI Response Received:', text); // Log success
+    // console.log('✅ AI Response Received:', text); // Log success
     return text.trim();
   } catch (error) {
     // 5. DETAILED ERROR LOGGING
-    console.error('❌ AI SERVICE CRASHED:');
-    console.error('   Message:', error.message);
+    //console.error('❌ AI SERVICE CRASHED:');
+    // console.error('   Message:', error.message);
     if (error.response) console.error('   API Response:', error.response);
 
     return 'Daily analysis is currently unavailable (Check Server Logs).';

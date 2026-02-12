@@ -84,7 +84,7 @@ describe('Admin User Management Tests', () => {
       expect(res.statusCode).toBe(201);
       expect(res.body.success).toBe(true);
       expect(res.body.data.username).toBe('taj_hotel');
-      expect(res.body.data.message).toContain('credentials have been emailed');
+      expect(res.body.data.message).toContain('Credentials have been emailed');
 
       // Verify in DB
       const hotelInDb = await Hotel.findOne({ email: 'manager@taj.com' });
