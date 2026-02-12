@@ -12,6 +12,7 @@
 ---
 
 ## 📖 Table of Contents
+
 - [System Overview](#-system-overview)
 - [Tech Stack](#-tech-stack)
 - [Key Features](#-key-features)
@@ -94,7 +95,7 @@ graph TD
 
 We use **Postman** for standardizing our API requests.
 
-We have made a Collection of the APIs which is present in the application backend so to get those please inbox me then i will share you the postman collection link. 
+We have made a Collection of the APIs which is present in the application backend so to get those please inbox me then i will share you the postman collection link.
 
 > **Note:** To test protected routes, please login via the `/auth/login` endpoint first. The system will automatically set the `jwt` cookie for subsequent requests.
 
@@ -104,9 +105,9 @@ We have made a Collection of the APIs which is present in the application backen
 
 ### Prerequisites
 
-* Node.js (v18+)
-* Docker & Docker Compose (Optional)
-* Redis Server (Running locally or in cloud)
+- Node.js (v18+)
+- Docker & Docker Compose (Optional)
+- Redis Server (Running locally or in cloud)
 
 ### 1. Clone the Repository
 
@@ -150,7 +151,6 @@ npm run dev
 
 ```
 
-
 ## 📂 Project Structure
 
 ```
@@ -164,7 +164,6 @@ src/
 └── server.js       # Application Entry Point
 
 ```
-
 
 ## 🤝 Contributing
 
@@ -187,4 +186,3 @@ Commits: Use conventional messages (e.g., feat: add guest search).
 ---
 
 Made with ❤️ by [Uttkarsh](https://www.google.com/search?q=https://github.com/uttkarshnjr10)
-

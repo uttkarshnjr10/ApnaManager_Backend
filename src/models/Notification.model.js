@@ -1,34 +1,37 @@
 const mongoose = require('mongoose');
 
-const notificationSchema = new mongoose.Schema({
+const notificationSchema = new mongoose.Schema(
+  {
     recipientStation: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: 'PoliceStation',
-        // Not required if the notification is for a Regional Admin who has no station
-        required: false, 
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'PoliceStation',
+      // Not required if the notification is for a Regional Admin who has no station
+      required: false,
     },
-    
+
     // DYNAMIC REFERENCE
     recipientUser: {
-        type: mongoose.Schema.Types.ObjectId,
-        required: true,
-        refPath: 'recipientModel' // Tells Mongoose which collection to join
+      type: mongoose.Schema.Types.ObjectId,
+      required: true,
+      refPath: 'recipientModel', // Tells Mongoose which collection to join
     },
     recipientModel: {
-        type: String,
-        required: true,
-        enum: ['Police', 'RegionalAdmin', 'Hotel'] 
+      type: String,
+      required: true,
+      enum: ['Police', 'RegionalAdmin', 'Hotel'],
     },
-    
+
     message: {
-        type: String,
-        required: true,
+      type: String,
+      required: true,
     },
     isRead: {
-        type: Boolean,
-        default: false,
+      type: Boolean,
+      default: false,
     },
-}, { timestamps: true });
+  },
+  { timestamps: true }
+);
 
 const Notification = mongoose.model('Notification', notificationSchema);
 

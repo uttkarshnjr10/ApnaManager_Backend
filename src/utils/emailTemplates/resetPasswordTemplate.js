@@ -1,6 +1,6 @@
 // src/utils/emailTemplates/resetPasswordTemplate.js
 const resetPasswordTemplate = (username, resetUrl) => {
-    return `
+  return `
       <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: auto; padding: 20px; border: 1px solid #ddd; border-radius: 10px;">
         <h2 style="color: #1976D2;">Password Reset Request</h2>
         <p>Hi ${username},</p>

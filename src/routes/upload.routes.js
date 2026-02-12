@@ -6,11 +6,11 @@ const { protect, authorize } = require('../middleware/auth.middleware');
 const { photoUpload } = require('../middleware/upload.middleware');
 
 router.post(
-    '/single-image',
-    protect,
-    authorize('Hotel'),
-    photoUpload.single('image'),
-    uploadSingleImage
+  '/single-image',
+  protect,
+  authorize('Hotel'),
+  photoUpload.single('image'),
+  uploadSingleImage
 );
 
 module.exports = router;

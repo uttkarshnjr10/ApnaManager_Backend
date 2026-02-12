@@ -6,12 +6,14 @@ const helmet = require('helmet');
 const morgan = require('morgan');
 
 const { notFound, errorHandler } = require('./middleware/error.middleware');
-const mainRouter = require('./routes/index'); 
+const mainRouter = require('./routes/index');
 
 const app = express();
 
-const allowedOrigins = 
-          process.env.CORS_ALLOWED_ORIGINS?.split(',') || ['http://localhost:3000', 'http://localhost:5173'];
+const allowedOrigins = process.env.CORS_ALLOWED_ORIGINS?.split(',') || [
+  'http://localhost:3000',
+  'http://localhost:5173',
+];
 
 const corsOptions = {
   origin: (origin, callback) => {
@@ -19,11 +21,11 @@ const corsOptions = {
     if (allowedOrigins.indexOf(origin) !== -1) {
       callback(null, true);
     } else {
-      console.log("BLOCKED CORS ORIGIN:", origin);
+      console.log('BLOCKED CORS ORIGIN:', origin);
       callback(new Error('Not allowed by CORS'));
     }
   },
-  credentials: true, 
+  credentials: true,
 };
 
 // Middleware
@@ -37,7 +39,7 @@ if (process.env.NODE_ENV === 'development') {
 }
 
 // Routes
-app.use('/api', mainRouter); 
+app.use('/api', mainRouter);
 app.get('/', (req, res) => res.send('Server is running...'));
 
 // Error Handlers

@@ -5,7 +5,7 @@ dotenv.config();
 const connectDB = require('./src/config/db');
 const { connectRedis } = require('./src/config/redisClient');
 const logger = require('./src/utils/logger');
-const { initSocket } = require('./src/config/socket'); 
+const { initSocket } = require('./src/config/socket');
 
 const app = require('./src/app');
 

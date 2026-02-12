@@ -11,12 +11,12 @@ const checkoutTemplate = (guest) => {
   const checkInDate = new Date(guest.stayDetails.checkIn).toLocaleDateString('en-IN', {
     day: 'numeric',
     month: 'long',
-    year: 'numeric'
+    year: 'numeric',
   });
   const checkOutDate = new Date().toLocaleDateString('en-IN', {
     day: 'numeric',
     month: 'long',
-    year: 'numeric'
+    year: 'numeric',
   });
 
   return `

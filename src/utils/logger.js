@@ -1,4 +1,3 @@
-
 const getTimestamp = () => new Date().toLocaleTimeString();
 
 const info = (message) => {
