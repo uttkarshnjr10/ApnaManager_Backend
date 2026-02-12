@@ -12,7 +12,9 @@
     "prepare": "husky install || true",
     "test": "jest",
     "test:watch": "jest --watch",
-    "test:coverage": "jest --coverage"
+    "test:coverage": "jest --coverage",
+    "test:auth": "jest tests/auth.test.js",
+    "test:user": "jest tests/user.test.js"
   },
   "dependencies": {
     "@google-cloud/vision": "^5.3.3",
