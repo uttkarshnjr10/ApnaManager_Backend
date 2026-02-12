@@ -1,10 +1,17 @@
-// jest.config.js
 module.exports = {
   testEnvironment: 'node',
-  // This line tells Jest to load .env before running any test file
-  setupFiles: ['dotenv/config'], 
+  coveragePathIgnorePatterns: ['/node_modules/'],
+  testMatch: ['**/__tests__/**/*.js', '**/?(*.)+(spec|test).js'],
+  collectCoverageFrom: [
+    'controllers/**/*.js',
+    'models/**/*.js',
+    'utils/**/*.js',
+    '!**/node_modules/**',
+  ],
+  setupFilesAfterEnv: ['<rootDir>/tests/setup.js'],
+  testTimeout: 10000,
   verbose: true,
-  forceExit: true, // Forces Jest to exit after tests complete (fixes open handles)
+  forceExit: true,
   clearMocks: true,
   resetMocks: true,
   restoreMocks: true,

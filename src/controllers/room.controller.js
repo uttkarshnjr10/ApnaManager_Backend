@@ -1,5 +1,5 @@
 // 1. FIX: Import the new Hotel model
-const Hotel = require('../models/Hotel.model'); 
+const Hotel = require('../models/Hotel.model');
 const asyncHandler = require('express-async-handler');
 const ApiError = require('../utils/ApiError');
 const ApiResponse = require('../utils/ApiResponse');
@@ -26,7 +26,7 @@ const addRoom = asyncHandler(async (req, res) => {
   }
 
   // Check if room number already exists
-  const roomExists = hotel.rooms.find(r => r.roomNumber === roomNumber);
+  const roomExists = hotel.rooms.find((r) => r.roomNumber === roomNumber);
   if (roomExists) {
     throw new ApiError(400, 'A room with this number/name already exists');
   }
@@ -35,12 +35,12 @@ const addRoom = asyncHandler(async (req, res) => {
     _id: new mongoose.Types.ObjectId(),
     roomNumber,
     status: 'Vacant',
-    guestId: null
+    guestId: null,
   };
 
   hotel.rooms.push(newRoom);
   await hotel.save();
-  
+
   res.status(201).json(new ApiResponse(201, newRoom, 'Room added successfully'));
 });
 
@@ -64,7 +64,9 @@ const updateRoom = asyncHandler(async (req, res) => {
   }
 
   // Check for duplicate room number (excluding current room)
-  const roomExists = hotel.rooms.find(r => r.roomNumber === roomNumber && r._id.toString() !== roomId);
+  const roomExists = hotel.rooms.find(
+    (r) => r.roomNumber === roomNumber && r._id.toString() !== roomId
+  );
   if (roomExists) {
     throw new ApiError(400, 'Another room with this number/name already exists');
   }
@@ -89,7 +91,7 @@ const deleteRoom = asyncHandler(async (req, res) => {
   }
 
   // Remove the subdocument
-  room.deleteOne(); 
+  room.deleteOne();
   await hotel.save();
 
   res.status(200).json(new ApiResponse(200, null, 'Room deleted successfully'));
@@ -102,18 +104,18 @@ const getRoomDashboardStats = asyncHandler(async (req, res) => {
   }
 
   const total = hotel.rooms.length;
-  const occupied = hotel.rooms.filter(r => r.status === 'Occupied').length;
+  const occupied = hotel.rooms.filter((r) => r.status === 'Occupied').length;
   const vacant = total - occupied;
   const vacantRooms = hotel.rooms
-    .filter(r => r.status === 'Vacant')
-    .map(r => r.roomNumber)
-    .sort(); 
+    .filter((r) => r.status === 'Vacant')
+    .map((r) => r.roomNumber)
+    .sort();
 
   const stats = {
     total,
     occupied,
     vacant,
-    vacantRooms
+    vacantRooms,
   };
 
   res.status(200).json(new ApiResponse(200, stats));
@@ -124,5 +126,5 @@ module.exports = {
   addRoom,
   deleteRoom,
   updateRoom,
-  getRoomDashboardStats
+  getRoomDashboardStats,
 };

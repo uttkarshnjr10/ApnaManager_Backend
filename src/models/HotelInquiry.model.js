@@ -1,7 +1,7 @@
-
 const mongoose = require('mongoose');
 
-const hotelInquirySchema = new mongoose.Schema({
+const hotelInquirySchema = new mongoose.Schema(
+  {
     hotelName: { type: String, required: true },
     gstNumber: { type: String, required: true },
     ownerName: { type: String, required: true },
@@ -15,27 +15,29 @@ const hotelInquirySchema = new mongoose.Schema({
     pinCode: { type: String, required: true },
     localThana: { type: String, required: true },
     fullAddress: { type: String, required: true },
-    pinLocation: { type: String }, 
+    pinLocation: { type: String },
 
     ownerSignature: {
-        public_id: String,
-        url: String,
+      public_id: String,
+      url: String,
     },
     hotelStamp: {
-        public_id: String,
-        url: String,
+      public_id: String,
+      url: String,
     },
-    
+
     status: {
-        type: String,
-        enum: ['pending', 'approved', 'rejected'],
-        default: 'pending',
+      type: String,
+      enum: ['pending', 'approved', 'rejected'],
+      default: 'pending',
     },
-    aadhaarCard: { 
-        public_id: String,
-        url: String,
+    aadhaarCard: {
+      public_id: String,
+      url: String,
     },
-}, { timestamps: true });
+  },
+  { timestamps: true }
+);
 
 const HotelInquiry = mongoose.model('HotelInquiry', hotelInquirySchema);
 

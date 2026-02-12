@@ -1,12 +1,13 @@
 const mongoose = require('mongoose');
-const { 
-    baseAuthFields, 
-    preSaveHashPassword, 
-    matchPasswordMethod, 
-    createPasswordResetTokenMethod 
+const {
+  baseAuthFields,
+  preSaveHashPassword,
+  matchPasswordMethod,
+  createPasswordResetTokenMethod,
 } = require('./schemas/baseAuth.schema');
 
-const policeSchema = new mongoose.Schema({
+const policeSchema = new mongoose.Schema(
+  {
     ...baseAuthFields,
 
     // Police Specific Fields
@@ -15,11 +16,13 @@ const policeSchema = new mongoose.Schema({
     rank: { type: String, trim: true },
     station: { type: String, trim: true },
     policeStation: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: 'PoliceStation',
-        required: true,
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'PoliceStation',
+      required: true,
     },
-}, { timestamps: true });
+  },
+  { timestamps: true }
+);
 
 policeSchema.pre('save', preSaveHashPassword);
 policeSchema.methods.matchPassword = matchPasswordMethod;

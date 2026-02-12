@@ -6,8 +6,6 @@ const { protect, authorize } = require('../middleware/auth.middleware');
 
 router.use(protect, authorize('Regional Admin'));
 
-router.route('/')
-    .get(getAllStations)
-    .post(createStation);
+router.route('/').get(getAllStations).post(createStation);
 
 module.exports = router;

@@ -1,7 +1,7 @@
 // src/utils/emailTemplates/credentialsTemplate.js
 const credentialsTemplate = (username, temporaryPassword) => {
-    const frontendUrl = process.env.CORS_ALLOWED_ORIGINS || 'http://localhost:5173';
-    return `
+  const frontendUrl = process.env.CORS_ALLOWED_ORIGINS || 'http://localhost:5173';
+  return `
       <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: auto; padding: 20px; border: 1px solid #ddd; border-radius: 10px;">
         <h2 style="color: #1976D2;">Welcome to GuestGuard!</h2>
         <p>An administrator has created an account for you. Please use the following credentials to log in for the first time.</p>

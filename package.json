@@ -5,15 +5,18 @@
   "scripts": {
     "dev": "nodemon --env-file .env server.js",
     "start": "node server.js",
-    "seed": "node -r dotenv/config src/scripts/seeder.js", 
+    "seed": "node -r dotenv/config src/scripts/seeder.js",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
-    "test": "jest --detectOpenHandles --runInBand",
-    "prepare": "husky install || true"
+    "prepare": "husky install || true",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage"
   },
   "dependencies": {
     "@google-cloud/vision": "^5.3.3",
+    "@google/generative-ai": "^0.24.1",
     "@sendgrid/mail": "^8.1.5",
     "axios": "^1.11.0",
     "bcryptjs": "^3.0.2",
@@ -29,6 +32,7 @@
     "mongoose": "^8.17.0",
     "morgan": "^1.10.1",
     "multer": "^2.0.2",
+    "node-cache": "^5.1.2",
     "pdfkit": "^0.17.1",
     "redis": "^5.8.0",
     "sharp": "^0.34.5",
@@ -41,7 +45,9 @@
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-prettier": "^5.5.5",
     "husky": "^9.1.7",
+    "ioredis": "^5.9.2",
     "jest": "^30.2.0",
+    "mongodb-memory-server": "^11.0.1",
     "nodemon": "^3.1.11",
     "prettier": "^3.8.1",
     "supertest": "^7.2.2"

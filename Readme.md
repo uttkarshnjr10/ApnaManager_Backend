@@ -1,5 +1,4 @@
-
-# 🛡️ ApnaManager Backend 
+# 🛡️ ApnaManager Backend
 
 > An enterprise-grade Hotel Management & Security Verification System facilitating seamless, secure data exchange between Hotels and Law Enforcement Agencies.
 
@@ -12,6 +11,7 @@
 ---
 
 ## 📖 Table of Contents
+
 - [System Overview](#-system-overview)
 - [Tech Stack & Architecture](#-tech-stack--architecture)
 - [Key Features](#-key-features)
@@ -27,6 +27,7 @@
 GuestGuard is a robust backend solution designed to digitize hotel guest entries and automate police verification processes. It eliminates manual paperwork by providing a secure digital pipeline.
 
 **Core Roles:**
+
 1.  **Hotel Managers:** Fast guest check-in with image handling, report generation, and room management.
 2.  **Police/Authorities:** Real-time dashboard to monitor guest entries, manage watchlists, and receive alerts.
 3.  **Admin:** System-wide oversight and user management.
@@ -37,29 +38,30 @@ GuestGuard is a robust backend solution designed to digitize hotel guest entries
 
 The system is built on a **Monolithic Architecture**, optimized for speed and data integrity.
 
-| Category | Technologies |
-|----------|--------------|
-| **Runtime** | Node.js (v18+) |
-| **Framework** | Express.js |
-| **Database** | MongoDB (Mongoose ORM) |
-| **Caching** | Redis (JWT Blacklisting & Session Security) |
-| **Authentication** | JWT via HttpOnly Cookies (XSS Protection) |
-| **File Storage** | Cloudinary (High-performance Parallel Streaming) |
-| **Email Service** | SendGrid |
-| **DevOps** | Docker, Docker Compose |
+| Category           | Technologies                                     |
+| ------------------ | ------------------------------------------------ |
+| **Runtime**        | Node.js (v18+)                                   |
+| **Framework**      | Express.js                                       |
+| **Database**       | MongoDB (Mongoose ORM)                           |
+| **Caching**        | Redis (JWT Blacklisting & Session Security)      |
+| **Authentication** | JWT via HttpOnly Cookies (XSS Protection)        |
+| **File Storage**   | Cloudinary (High-performance Parallel Streaming) |
+| **Email Service**  | SendGrid                                         |
+| **DevOps**         | Docker, Docker Compose                           |
 
 ### 🏗 System Architecture
+
 This diagram illustrates the actual data flow in the deployed environment:
 
 ```mermaid
 graph TD
     Client[Frontend Client / React] -->|HTTPS + HttpOnly Cookie| API[Express.js Backend API]
-    
+
     subgraph "Core Backend Services"
         API -->|Read/Write Data| DB[(MongoDB)]
         API -->|Token Blacklist & Caching| Cache[(Redis)]
     end
-    
+
     subgraph "External Services"
         API -->|Parallel Image Streaming| Cloud[Cloudinary]
         API -->|Transactional Emails| SMTP[SendGrid]
@@ -73,20 +75,20 @@ graph TD
 
 ### 🔐 Enterprise Security
 
-* **HttpOnly Cookie Authentication:** Tokens are handled by the browser/server, preventing XSS attacks (no local storage).
-* **Redis-Based Logout:** Immediate token invalidation using a Redis blacklist.
-* **Role-Based Access Control (RBAC):** Strict permission layering for Hotel, Police, and Admin users.
+- **HttpOnly Cookie Authentication:** Tokens are handled by the browser/server, preventing XSS attacks (no local storage).
+- **Redis-Based Logout:** Immediate token invalidation using a Redis blacklist.
+- **Role-Based Access Control (RBAC):** Strict permission layering for Hotel, Police, and Admin users.
 
 ### ⚡ High Performance
 
-* **Parallel Upload Pipeline:** Guest registration images (ID Front, Back, Live Photo) are streamed to Cloudinary simultaneously using `Promise.all` and memory buffering, significantly reducing wait times.
-* **Optimized Database Queries:** Indexed fields for fast search and report generation.
+- **Parallel Upload Pipeline:** Guest registration images (ID Front, Back, Live Photo) are streamed to Cloudinary simultaneously using `Promise.all` and memory buffering, significantly reducing wait times.
+- **Optimized Database Queries:** Indexed fields for fast search and report generation.
 
 ### 🏨 Core Logic
 
-* **Real-Time Watchlist:** Automatically checks guest ID numbers against a police watchlist and triggers alerts.
-* **Automated Reporting:** Generates downloadable PDF/CSV reports for daily police submission.
-* **Room Management:** Real-time occupancy tracking.
+- **Real-Time Watchlist:** Automatically checks guest ID numbers against a police watchlist and triggers alerts.
+- **Automated Reporting:** Generates downloadable PDF/CSV reports for daily police submission.
+- **Room Management:** Real-time occupancy tracking.
 
 ---
 
@@ -94,7 +96,7 @@ graph TD
 
 We use **Postman** for standardizing our API requests.
 
-We have made a Collection of the APIs which is present in the application backend so to get those please inbox me then i will share you the postman collection link. 
+We have made a Collection of the APIs which is present in the application backend so to get those please inbox me then i will share you the postman collection link.
 
 > **Note:** To test protected routes, please login via the `/auth/login` endpoint first. The system will automatically set the `jwt` cookie for subsequent requests.
 
@@ -104,9 +106,9 @@ We have made a Collection of the APIs which is present in the application backen
 
 ### Prerequisites
 
-* Node.js (v18+)
-* Docker & Docker Compose (Optional)
-* Redis Server (Running locally or in cloud)
+- Node.js (v18+)
+- Docker & Docker Compose (Optional)
+- Redis Server (Running locally or in cloud)
 
 ### 1. Clone the Repository
 
@@ -150,7 +152,6 @@ npm run dev
 
 ```
 
-
 ## 📂 Project Structure
 
 ```
@@ -164,7 +165,6 @@ src/
 └── server.js       # Application Entry Point
 
 ```
-
 
 ## 🤝 Contributing
 
@@ -188,4 +188,3 @@ Contributions are welcome! We follow strict **Clean Code** principles.
 ---
 
 Made with ❤️ by [Uttkarsh](https://www.google.com/search?q=https://github.com/uttkarshnjr10)
-
