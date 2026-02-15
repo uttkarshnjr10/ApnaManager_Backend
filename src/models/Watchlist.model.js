@@ -6,11 +6,11 @@ const watchlistSchema = new mongoose.Schema(
       type: String,
       required: true,
       trim: true,
-      unique: true,
+      unique: true, // IMPORTANT: 'unique: true' automatically creates a high-performance index in MongoDB!
     },
     type: {
       type: String,
-      enum: ['ID_Number', 'Phone_Number'],
+      enum: ['ID_Number', 'Phone_Number'], // Kept your original enums safe
       required: true,
     },
     reason: {
@@ -34,6 +34,16 @@ const watchlistSchema = new mongoose.Schema(
     timestamps: true,
   }
 );
+
+// ============================================================
+// PERFORMANCE OPTIMIZATION: INDEXES
+// ============================================================
+
+// Index for finding watchlists by type quickly
+watchlistSchema.index({ type: 1 });
+
+// Index for finding who added the watchlist entry quickly
+watchlistSchema.index({ addedBy: 1 });
 
 const Watchlist = mongoose.model('Watchlist', watchlistSchema);
 module.exports = Watchlist;

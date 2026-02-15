@@ -1,3 +1,4 @@
+// src/models/Notification.model.js
 const mongoose = require('mongoose');
 
 const notificationSchema = new mongoose.Schema(
@@ -32,6 +33,23 @@ const notificationSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+
+// ============================================================
+// PERFORMANCE OPTIMIZATION: INDEXES
+// ============================================================
+
+// CRITICAL: Index for getMyNotifications query
+// Sorts by createdAt desc, so compound index is needed
+notificationSchema.index({ recipientUser: 1, createdAt: -1 });
+
+// Index for filtering unread notifications
+notificationSchema.index({ recipientUser: 1, isRead: 1 });
+
+// Index for station-wide notifications
+notificationSchema.index({ recipientStation: 1, createdAt: -1 });
+
+// Index for filtering unread by station
+notificationSchema.index({ recipientStation: 1, isRead: 1, createdAt: -1 });
 
 const Notification = mongoose.model('Notification', notificationSchema);
 
