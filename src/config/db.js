@@ -4,10 +4,11 @@ const logger = require('../utils/logger');
 const connectDB = async () => {
   try {
     const connOptions = {
-      useNewUrlParser: true,
-      useUnifiedTopology: true,
       serverSelectionTimeoutMS: 5000,
       socketTimeoutMS: 45000,
+      //Connection pool limits to save RAM on Render Free Tier
+      maxPoolSize: 10, // Max 10 active connections at once
+      minPoolSize: 2, // Keep 2 idle connections ready to go
     };
 
     const conn = await mongoose.connect(process.env.MONGO_URI, connOptions);
