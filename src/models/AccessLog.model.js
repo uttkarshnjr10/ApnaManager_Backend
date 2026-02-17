@@ -10,7 +10,7 @@ const accessLogSchema = new mongoose.Schema({
   userModel: {
     type: String,
     required: true,
-    enum: ['Hotel', 'Police', 'Regional Admin'],
+    enum: ['Hotel', 'Police', 'RegionalAdmin'], // Must match Mongoose model names for refPath
   },
   action: {
     type: String,

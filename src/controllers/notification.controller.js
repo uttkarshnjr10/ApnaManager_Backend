@@ -1,40 +1,47 @@
 // src/controllers/notification.controller.js
 const Notification = require('../models/Notification.model');
-const asyncHandler = require('express-async-handler');
+const asyncHandler = require('../utils/asyncHandler');
 const ApiError = require('../utils/ApiError');
 const ApiResponse = require('../utils/ApiResponse');
 
+/**
+ * Fetch the most recent notifications for the authenticated user.
+ * Uses compound index { recipientUser: 1, createdAt: -1 } for optimal performance.
+ *
+ * @desc    Get current user's notifications
+ * @route   GET /api/notifications
+ * @access  Private
+ */
 const getMyNotifications = asyncHandler(async (req, res) => {
-  // req.user._id comes from the Auth Middleware (which checks all 3 collections)
-  // Since ObjectIds are unique across collections, this query is safe.
   const notifications = await Notification.find({ recipientUser: req.user._id })
     .sort({ createdAt: -1 })
     .limit(20)
-    // Optional: Populate the sender if you want to show "Sent by Station X"
-    // But for now, raw data is fine.
     .lean();
 
   res.status(200).json(new ApiResponse(200, notifications));
 });
 
+/**
+ * Mark a single notification as read.
+ * Uses atomic findOneAndUpdate with ownership filter — single DB call,
+ * no race conditions, and no separate authorization check needed.
+ *
+ * @desc    Mark notification as read
+ * @route   PUT /api/notifications/:id/read
+ * @access  Private
+ */
 const markAsRead = asyncHandler(async (req, res) => {
-  const notification = await Notification.findById(req.params.id);
+  const notification = await Notification.findOneAndUpdate(
+    { _id: req.params.id, recipientUser: req.user._id },
+    { isRead: true },
+    { new: true }
+  ).lean();
 
   if (!notification) {
-    throw new ApiError(404, 'notification not found');
+    throw new ApiError(404, 'Notification not found or not authorized');
   }
 
-  // Security Check: Ensure the user owns this notification
-  if (notification.recipientUser.toString() !== req.user._id.toString()) {
-    throw new ApiError(403, 'not authorized to modify this notification');
-  }
-
-  if (!notification.isRead) {
-    notification.isRead = true;
-    await notification.save();
-  }
-
-  res.status(200).json(new ApiResponse(200, notification, 'notification marked as read'));
+  res.status(200).json(new ApiResponse(200, notification, 'Notification marked as read'));
 });
 
 module.exports = { getMyNotifications, markAsRead };
