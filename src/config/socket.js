@@ -2,7 +2,6 @@ const { Server } = require('socket.io');
 const jwt = require('jsonwebtoken');
 const logger = require('../utils/logger');
 const Police = require('../models/Police.model');
-const cookie = require('cookie'); // Optional, but regex is fine if you don't want to install it.
 
 let io;
 
@@ -14,21 +13,23 @@ const initSocket = (httpServer) => {
         'http://localhost:3000',
       ],
       methods: ['GET', 'POST'],
-      credentials: true, // Allow cookies to pass through
+      credentials: true,
     },
+    // Heartbeat: detect dead connections early
+    pingInterval: 25000,
+    pingTimeout: 10000,
   });
 
-  // Middleware: Authenticate Socket Connections
+  // ── Auth Middleware ─────────────────────────────────────────
   io.use(async (socket, next) => {
     try {
       let token = socket.handshake.auth.token;
 
-      // 1. NEW LOGIC: If no auth token sent manually, check the cookies
+      // Fallback: extract JWT from cookie header
       if (!token && socket.handshake.headers.cookie) {
-        // Simple regex to grab the 'jwt' cookie
-        const match = socket.handshake.headers.cookie.match(/(^| )jwt=([^;]+)/);
+        const match = socket.handshake.headers.cookie.match(/(?:^|;\s*)jwt=([^;]+)/);
         if (match) {
-          token = match[2];
+          token = match[1];
         }
       }
 
@@ -37,44 +38,45 @@ const initSocket = (httpServer) => {
       }
 
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
-
-      socket.user = {
-        id: decoded.id,
-        role: decoded.role,
-      };
-
+      socket.user = { id: decoded.id, role: decoded.role };
       next();
     } catch (err) {
-      //console.log("Socket Auth Failed:", err.message);
+      logger.error(`Socket auth failed: ${err.message}`);
       next(new Error('Authentication error: Invalid token'));
     }
   });
 
+  // ── Connection Handler ─────────────────────────────────────
   io.on('connection', async (socket) => {
-    //logger.info(`🔌 Socket Connected: ${socket.id} (Role: ${socket.user.role})`);
+    logger.info(`Socket connected: ${socket.id} (Role: ${socket.user.role})`);
 
-    // 1. Police Officers join their Station's Room
+    // Every authenticated user joins a personal room for targeted notifications
+    socket.join(`user_${socket.user.id}`);
+
+    // Police Officers join their Station's room
     if (socket.user.role === 'Police') {
       try {
-        const officer = await Police.findById(socket.user.id).select('policeStation');
-        if (officer && officer.policeStation) {
-          const roomName = `station_${officer.policeStation.toString()}`;
-          socket.join(roomName);
-          // logger.info(`👮 Officer ${socket.user.id} joined channel: ${roomName}`);
+        const officer = await Police.findById(socket.user.id).select('policeStation').lean();
+        if (officer?.policeStation) {
+          socket.join(`station_${officer.policeStation.toString()}`);
         }
       } catch (error) {
-        //  logger.error(`Socket Room Error: ${error.message}`);
+        logger.error(`Socket room join error: ${error.message}`);
       }
     }
 
-    // 2. Admins join the Global Admin Room
+    // Regional Admins join the global admin room
     if (socket.user.role === 'Regional Admin') {
       socket.join('admin_global');
-      //  logger.info(`👨‍💼 Admin ${socket.user.id} joined channel: admin_global`);
+    }
+
+    // Hotel users join a hotel-specific room for real-time notifications
+    if (socket.user.role === 'Hotel') {
+      socket.join(`hotel_${socket.user.id}`);
     }
 
     socket.on('disconnect', () => {
-      // logger.info(`Socket Disconnected: ${socket.id}`);
+      logger.info(`Socket disconnected: ${socket.id}`);
     });
   });
 

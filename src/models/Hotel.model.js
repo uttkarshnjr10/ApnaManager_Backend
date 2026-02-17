@@ -22,6 +22,7 @@ const hotelSchema = new mongoose.Schema(
     gstNumber: { type: String, trim: true },
     phone: { type: String, trim: true },
     address: { type: String, trim: true },
+    city: { type: String, trim: true },
     state: { type: String, trim: true },
     pinCode: { type: String, trim: true },
     nationality: { type: String, trim: true, default: 'Indian' },

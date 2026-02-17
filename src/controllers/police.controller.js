@@ -1,4 +1,5 @@
 // src/controllers/police.controller.js
+
 const Guest = require('../models/Guest.model');
 const AccessLog = require('../models/AccessLog.model');
 const Hotel = require('../models/Hotel.model');
@@ -6,115 +7,194 @@ const Alert = require('../models/Alert.model');
 const Remark = require('../models/Remark.model');
 const CaseReport = require('../models/CaseReport.model');
 
-const Police = require('../models/Police.model');
-const RegionalAdmin = require('../models/RegionalAdmin.model');
-
-const asyncHandler = require('express-async-handler');
+const asyncHandler = require('../utils/asyncHandler');
 const logger = require('../utils/logger');
 const ApiError = require('../utils/ApiError');
 const ApiResponse = require('../utils/ApiResponse');
 const { generateSignedUrl } = require('../utils/cloudinary');
 
-// --- 1. SEARCH GUESTS ---
+// ============================================================
+// PRIVATE HELPERS (DRY)
+// ============================================================
+
+/**
+ * Escapes special regex characters to prevent ReDoS attacks.
+ * @param {string} str - Raw user input
+ * @returns {string} Sanitized string safe for use inside RegExp
+ */
+const escapeRegex = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/**
+ * Fire-and-forget audit log creation.
+ * Errors are logged but never propagated — intentionally decoupled from the request lifecycle.
+ * @param {Object} logData - Fields for AccessLog.create()
+ */
+const createAuditLog = (logData) => {
+  AccessLog.create(logData).catch((err) => {
+    logger.error(`Audit log failed: ${err.message}`);
+  });
+};
+
+/**
+ * Generates signed Cloudinary URLs for all image fields on a lean guest document.
+ * @param {Object|null} guest - A lean guest document (or null)
+ * @returns {Object|null} Guest with signed URLs appended
+ */
+const signGuestImages = (guest) => {
+  if (!guest) return null;
+  return {
+    ...guest,
+    idImageFront: guest.idImageFront?.public_id
+      ? { ...guest.idImageFront, url: generateSignedUrl(guest.idImageFront.public_id) }
+      : null,
+    idImageBack: guest.idImageBack?.public_id
+      ? { ...guest.idImageBack, url: generateSignedUrl(guest.idImageBack.public_id) }
+      : null,
+    livePhotoURL: guest.livePhoto?.public_id ? generateSignedUrl(guest.livePhoto.public_id) : null,
+  };
+};
+
+/**
+ * Parses, validates, and clamps pagination parameters.
+ * @param {number|string} page  - Requested page (1-based)
+ * @param {number|string} limit - Requested page size
+ * @param {number} [maxLimit=100] - Upper ceiling for limit
+ * @returns {{ page: number, limit: number, skip: number }}
+ */
+const parsePagination = (page = 1, limit = 20, maxLimit = 100) => {
+  const p = Math.max(1, parseInt(page, 10) || 1);
+  const l = Math.min(maxLimit, Math.max(1, parseInt(limit, 10) || 20));
+  return { page: p, limit: l, skip: (p - 1) * l };
+};
+
+/**
+ * Builds a standard pagination metadata object for API responses.
+ * @param {number} totalDocs - Total matching documents
+ * @param {number} page      - Current page
+ * @param {number} limit     - Page size
+ * @returns {Object}
+ */
+const buildPaginationMeta = (totalDocs, page, limit) => ({
+  totalDocs,
+  page,
+  totalPages: Math.ceil(totalDocs / limit),
+  hasNextPage: page * limit < totalDocs,
+});
+
+/** Reusable projection for Hotel populates across handlers. */
+const HOTEL_PROJECTION = 'username hotelName city address state';
+
+/** Map of allowed searchBy values to their Guest model field paths. */
+const SEARCH_FIELD_MAP = {
+  name: 'primaryGuest.name',
+  phone: 'primaryGuest.phone',
+  id: 'idNumber',
+};
+
+// ============================================================
+// CONTROLLERS
+// ============================================================
+
+/**
+ * Search guest records by name, phone, or ID number.
+ * Creates a non-blocking audit log for every search attempt.
+ *
+ * @desc    Search guest records
+ * @route   POST /api/police/search
+ * @access  Private/Police
+ */
 const searchGuests = asyncHandler(async (req, res) => {
-  const { query, searchBy, reason, page = 1, limit = 20 } = req.body;
+  const { query, searchBy, reason } = req.body;
 
   if (!query || !searchBy || !reason) {
     throw new ApiError(400, 'Search query, type (searchBy), and reason are required');
   }
 
-  // Non-Blocking Audit Log
-  setImmediate(async () => {
-    try {
-      await AccessLog.create({
-        user: req.user._id,
-        userModel: 'Police',
-        action: 'Guest Search',
-        searchQuery: `${searchBy}: ${query}`,
-        reason: reason,
-      });
-    } catch (err) {
-      logger.error(`Failed to log search access: ${err.message}`);
-    }
-  });
-
-  let searchCriteria = {};
-  const safeQuery = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-
-  switch (searchBy) {
-    case 'name':
-      searchCriteria['primaryGuest.name'] = { $regex: new RegExp(safeQuery, 'i') };
-      break;
-    case 'phone':
-      searchCriteria['primaryGuest.phone'] = { $regex: new RegExp(safeQuery, 'i') };
-      break;
-    case 'id':
-      searchCriteria['idNumber'] = { $regex: new RegExp(safeQuery, 'i') };
-      break;
-    default:
-      throw new ApiError(400, "Invalid searchBy value. Use 'name', 'phone', or 'id'");
+  const fieldPath = SEARCH_FIELD_MAP[searchBy];
+  if (!fieldPath) {
+    throw new ApiError(400, "Invalid searchBy value. Use 'name', 'phone', or 'id'");
   }
 
-  const totalDocs = await Guest.countDocuments(searchCriteria);
-  const guests = await Guest.find(searchCriteria)
-    .sort({ registrationTimestamp: -1 })
-    .skip((page - 1) * limit)
-    .limit(parseInt(limit))
-    .populate({ path: 'hotel', select: 'username hotelName city', model: 'Hotel' })
-    .lean();
+  const { page, limit, skip } = parsePagination(req.body.page, req.body.limit);
+  const filter = { [fieldPath]: { $regex: escapeRegex(query), $options: 'i' } };
 
-  const guestsWithSignedUrls = guests.map((guest) => ({
-    ...guest,
-    livePhotoURL: guest.livePhoto?.public_id ? generateSignedUrl(guest.livePhoto.public_id) : null,
+  // Fire-and-forget audit log — never blocks the response
+  createAuditLog({
+    user: req.user._id,
+    userModel: 'Police',
+    action: 'Guest Search',
+    searchQuery: `${searchBy}: ${query}`,
+    reason,
+  });
+
+  // Parallel: count + paginated fetch
+  const [totalDocs, guests] = await Promise.all([
+    Guest.countDocuments(filter),
+    Guest.find(filter)
+      .sort({ registrationTimestamp: -1 })
+      .skip(skip)
+      .limit(limit)
+      .populate({ path: 'hotel', select: HOTEL_PROJECTION })
+      .lean(),
+  ]);
+
+  const guestsWithSignedUrls = guests.map((g) => ({
+    ...g,
+    livePhotoURL: g.livePhoto?.public_id ? generateSignedUrl(g.livePhoto.public_id) : null,
   }));
 
   res.status(200).json(
     new ApiResponse(200, {
       guests: guestsWithSignedUrls,
-      pagination: {
-        totalDocs,
-        page: parseInt(page),
-        totalPages: Math.ceil(totalDocs / limit),
-        hasNextPage: page * limit < totalDocs,
-      },
+      pagination: buildPaginationMeta(totalDocs, page, limit),
     })
   );
 });
 
-// --- 2. DASHBOARD DATA ---
+/**
+ * Aggregate police dashboard statistics: total hotels, today's check-ins, open alerts.
+ * All three independent queries run in parallel via Promise.all.
+ *
+ * @desc    Get police dashboard data
+ * @route   GET /api/police/dashboard
+ * @access  Private/Police
+ */
 const getDashboardData = asyncHandler(async (req, res) => {
-  const hotelCount = await Hotel.countDocuments();
   const startOfToday = new Date();
   startOfToday.setHours(0, 0, 0, 0);
 
-  const guestsTodayCount = await Guest.countDocuments({
-    registrationTimestamp: { $gte: startOfToday },
-  });
+  const [totalHotels, guestsToday, alerts] = await Promise.all([
+    Hotel.countDocuments(),
+    Guest.countDocuments({ registrationTimestamp: { $gte: startOfToday } }),
+    Alert.find({ status: 'Open' })
+      .populate('guest', 'primaryGuest.name')
+      .sort({ createdAt: -1 })
+      .limit(5)
+      .lean(),
+  ]);
 
-  const recentAlerts = await Alert.find({ status: 'Open' })
-    .populate('guest', 'primaryGuest.name')
-    .sort({ createdAt: -1 })
-    .limit(5);
-
-  const dashboardData = {
-    totalHotels: hotelCount,
-    guestsToday: guestsTodayCount,
-    alerts: recentAlerts,
-  };
-
-  res.status(200).json(new ApiResponse(200, dashboardData));
+  res.status(200).json(new ApiResponse(200, { totalHotels, guestsToday, alerts }));
 });
 
-// --- 3. ALERTS ---
+/**
+ * Create a new alert flagging a specific guest.
+ * Validates guest existence (lightweight) and logs the action asynchronously.
+ *
+ * @desc    Create a guest alert
+ * @route   POST /api/police/alerts
+ * @access  Private/Police
+ */
 const createAlert = asyncHandler(async (req, res) => {
   const { guestId, reason } = req.body;
+
   if (!guestId || !reason) {
-    throw new ApiError(400, 'guest id and reason are required');
+    throw new ApiError(400, 'Guest ID and reason are required');
   }
 
-  const guestExists = await Guest.findById(guestId);
-  if (!guestExists) {
-    throw new ApiError(404, 'guest not found');
+  // Lightweight existence check — only fetch the field needed for the audit log
+  const guest = await Guest.findById(guestId).select('primaryGuest.name').lean();
+  if (!guest) {
+    throw new ApiError(404, 'Guest not found');
   }
 
   const alert = await Alert.create({
@@ -124,129 +204,176 @@ const createAlert = asyncHandler(async (req, res) => {
     creatorModel: 'Police',
   });
 
-  await AccessLog.create({
+  // Fire-and-forget audit
+  createAuditLog({
     user: req.user._id,
     userModel: 'Police',
     action: 'Alert Created',
-    reason: `flagged guest ${guestExists.primaryGuest.name} for: ${reason}`,
+    reason: `Flagged guest ${guest.primaryGuest.name} for: ${reason}`,
   });
 
-  res.status(201).json(new ApiResponse(201, alert, 'alert created successfully'));
+  res.status(201).json(new ApiResponse(201, alert, 'Alert created successfully'));
 });
 
+/**
+ * Retrieve all alerts with pagination, newest first.
+ * Uses .lean() to avoid Mongoose document overhead.
+ *
+ * @desc    Get all alerts (paginated)
+ * @route   GET /api/police/alerts
+ * @access  Private/Police
+ */
 const getAlerts = asyncHandler(async (req, res) => {
-  const alerts = await Alert.find()
-    .populate('guest', 'primaryGuest.name idNumber')
-    .populate('createdBy', 'username station')
-    .sort({ createdAt: -1 });
+  const { page, limit, skip } = parsePagination(req.query.page, req.query.limit);
 
-  res.status(200).json(new ApiResponse(200, alerts));
+  const [totalDocs, alerts] = await Promise.all([
+    Alert.countDocuments(),
+    Alert.find()
+      .populate('guest', 'primaryGuest.name idNumber')
+      .populate('createdBy', 'username station')
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit)
+      .lean(),
+  ]);
+
+  res.status(200).json(
+    new ApiResponse(200, {
+      alerts,
+      pagination: buildPaginationMeta(totalDocs, page, limit),
+    })
+  );
 });
 
+/**
+ * Mark an alert as resolved (atomic update — single DB call).
+ *
+ * @desc    Resolve an alert
+ * @route   PUT /api/police/alerts/:id/resolve
+ * @access  Private/Police
+ */
 const resolveAlert = asyncHandler(async (req, res) => {
-  const alert = await Alert.findById(req.params.id);
+  const alert = await Alert.findByIdAndUpdate(
+    req.params.id,
+    { status: 'Resolved' },
+    { new: true, runValidators: true }
+  ).lean();
+
   if (!alert) {
-    throw new ApiError(404, 'alert not found');
+    throw new ApiError(404, 'Alert not found');
   }
 
-  alert.status = 'Resolved';
-  const updatedAlert = await alert.save();
-
-  res.status(200).json(new ApiResponse(200, updatedAlert, 'alert resolved'));
+  res.status(200).json(new ApiResponse(200, alert, 'Alert resolved'));
 });
 
-// --- 4. GUEST HISTORY (ROBUST) ---
+/**
+ * Build a comprehensive cross-hotel history for a guest:
+ * all stay records, alerts, and officer remarks matched by ID document number.
+ * Parallel DB queries via Promise.all; fire-and-forget audit log.
+ *
+ * @desc    Get guest history (cross-hotel)
+ * @route   GET /api/police/guests/:id/history
+ * @access  Private/Police
+ */
 const getGuestHistory = asyncHandler(async (req, res) => {
-  const guestId = req.params.id;
-  const guest = await Guest.findById(guestId);
+  const guest = await Guest.findById(req.params.id).lean();
   if (!guest) {
     throw new ApiError(404, 'Guest not found');
   }
 
-  // 1. Find all visits by this person (matching ID Number)
+  // Find all visit records across hotels by matching the ID document number
   const stayHistory = await Guest.find({ idNumber: guest.idNumber })
-    .populate({ path: 'hotel', select: 'username hotelName city', model: 'Hotel' })
+    .populate({ path: 'hotel', select: HOTEL_PROJECTION })
     .sort({ 'stayDetails.checkIn': -1 })
     .lean();
 
   const guestIds = stayHistory.map((g) => g._id);
 
-  // 2. Fetch Alerts (Safely populated using refPath)
-  const alerts = await Alert.find({ guest: { $in: guestIds } })
-    .populate('createdBy', 'username rank station')
-    .sort({ createdAt: -1 })
-    .lean();
+  // Parallel fetch: alerts + remarks
+  const [alerts, remarks] = await Promise.all([
+    Alert.find({ guest: { $in: guestIds } })
+      .populate('createdBy', 'username rank station')
+      .sort({ createdAt: -1 })
+      .lean(),
+    Remark.find({ guest: { $in: guestIds } })
+      .populate('officer', 'username rank')
+      .sort({ createdAt: -1 })
+      .lean(),
+  ]);
 
-  // 3. Fetch Remarks
-  const remarks = await Remark.find({ guest: { $in: guestIds } })
-    .populate('officer', 'username rank')
-    .sort({ createdAt: -1 })
-    .lean();
-
-  // 4. Helper for signing URLs
-  const signImages = (g) => {
-    if (!g) return null;
-    return {
-      ...g,
-      idImageFront: g.idImageFront?.public_id
-        ? { ...g.idImageFront, url: generateSignedUrl(g.idImageFront.public_id) }
-        : null,
-      idImageBack: g.idImageBack?.public_id
-        ? { ...g.idImageBack, url: generateSignedUrl(g.idImageBack.public_id) }
-        : null,
-      livePhotoURL: g.livePhoto?.public_id ? generateSignedUrl(g.livePhoto.public_id) : null,
-    };
-  };
-
-  setImmediate(async () => {
-    try {
-      await AccessLog.create({
-        user: req.user._id,
-        userModel: 'Police',
-        action: 'View History',
-        reason: `Viewed history of ${guest.primaryGuest.name} (${guest.idNumber})`,
-      });
-    } catch (e) {
-      console.error('Audit Log Fail', e);
-    }
+  // Fire-and-forget audit
+  createAuditLog({
+    user: req.user._id,
+    userModel: 'Police',
+    action: 'View History',
+    reason: `Viewed history of ${guest.primaryGuest.name} (${guest.idNumber})`,
   });
 
-  const historyData = {
-    primaryGuest: signImages(guest.toObject ? guest.toObject() : guest),
-    stayHistory: stayHistory.map(signImages),
-    alerts,
-    remarks,
-  };
-
-  res.status(200).json(new ApiResponse(200, historyData));
+  res.status(200).json(
+    new ApiResponse(200, {
+      primaryGuest: signGuestImages(guest),
+      stayHistory: stayHistory.map(signGuestImages),
+      alerts,
+      remarks,
+    })
+  );
 });
 
-// --- 5. REMARKS (RESTORED) ---
+/**
+ * Add an officer remark/note against a guest record.
+ * Validates guest existence before persisting.
+ *
+ * @desc    Add remark to a guest
+ * @route   POST /api/police/guests/:id/remarks
+ * @access  Private/Police
+ */
 const addRemark = asyncHandler(async (req, res) => {
-  const guestId = req.params.id;
   const { text } = req.body;
+
   if (!text) {
-    throw new ApiError(400, 'remark text is required');
+    throw new ApiError(400, 'Remark text is required');
+  }
+
+  // Validate guest exists (cheapest possible check)
+  const guestExists = await Guest.exists({ _id: req.params.id });
+  if (!guestExists) {
+    throw new ApiError(404, 'Guest not found');
   }
 
   const remark = await Remark.create({
-    guest: guestId,
+    guest: req.params.id,
     officer: req.user._id,
     officerModel: 'Police',
     text,
   });
 
-  // We populate just for the immediate response
-  const populatedRemark = await remark.populate('officer', 'username');
+  // Return populated response as lean object
+  const populatedRemark = await Remark.findById(remark._id).populate('officer', 'username').lean();
 
-  res.status(201).json(new ApiResponse(201, populatedRemark, 'remark added successfully'));
+  res.status(201).json(new ApiResponse(201, populatedRemark, 'Remark added successfully'));
 });
 
-// --- 6. CASE REPORTS ---
+/**
+ * File a new case report, optionally linked to a guest.
+ * If a guestId is provided, validates its existence first.
+ *
+ * @desc    Create a case report
+ * @route   POST /api/police/reports
+ * @access  Private/Police
+ */
 const createCaseReport = asyncHandler(async (req, res) => {
   const { title, summary, guestId } = req.body;
+
   if (!title || !summary) {
     throw new ApiError(400, 'Title and summary are required');
+  }
+
+  // Validate referenced guest if provided
+  if (guestId) {
+    const guestExists = await Guest.exists({ _id: guestId });
+    if (!guestExists) {
+      throw new ApiError(404, 'Referenced guest not found');
+    }
   }
 
   const report = await CaseReport.create({
@@ -256,51 +383,115 @@ const createCaseReport = asyncHandler(async (req, res) => {
     officerModel: 'Police',
     guest: guestId || null,
   });
+
   res.status(201).json(new ApiResponse(201, report, 'Case report filed successfully'));
 });
 
+/**
+ * Retrieve case reports filed by the authenticated officer (paginated).
+ * Officer populate is intentionally omitted — the caller already knows their own identity.
+ *
+ * @desc    Get officer's case reports
+ * @route   GET /api/police/reports
+ * @access  Private/Police
+ */
 const getCaseReports = asyncHandler(async (req, res) => {
-  const reports = await CaseReport.find({ officer: req.user._id })
-    .populate('officer', 'username rank')
-    .populate('guest', 'primaryGuest.name')
-    .sort({ createdAt: -1 });
-  res.status(200).json(new ApiResponse(200, reports));
+  const { page, limit, skip } = parsePagination(req.query.page, req.query.limit);
+  const filter = { officer: req.user._id };
+
+  const [totalDocs, reports] = await Promise.all([
+    CaseReport.countDocuments(filter),
+    CaseReport.find(filter)
+      .populate('guest', 'primaryGuest.name')
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit)
+      .lean(),
+  ]);
+
+  res.status(200).json(
+    new ApiResponse(200, {
+      reports,
+      pagination: buildPaginationMeta(totalDocs, page, limit),
+    })
+  );
 });
 
+/**
+ * List all active hotels (name + location fields).
+ *
+ * @desc    Get list of active hotels
+ * @route   GET /api/police/hotel-list
+ * @access  Private/Police
+ */
 const getHotelList = asyncHandler(async (req, res) => {
-  const hotels = await Hotel.find({ status: 'Active' }).select('hotelName city').sort('hotelName');
+  const hotels = await Hotel.find({ status: 'Active' })
+    .select('hotelName city address state')
+    .sort('hotelName')
+    .lean();
+
   res.status(200).json(new ApiResponse(200, hotels));
 });
 
+/**
+ * Advanced analytics search with composite filters: hotel, city, state, purpose, date range.
+ * All user-supplied strings are regex-escaped to prevent ReDoS.
+ * Uses .distinct() for efficient hotel ID collection when filtering by location.
+ *
+ * @desc    Advanced guest search with filters
+ * @route   POST /api/police/analytics-search
+ * @access  Private/Police
+ */
 const advancedGuestSearch = asyncHandler(async (req, res) => {
   const { hotel, city, state, purposeOfVisit, dateFrom, dateTo } = req.body;
+  const { page, limit, skip } = parsePagination(req.body.page, req.body.limit);
 
-  let query = {};
-  let hotelQuery = {};
+  const filter = {};
+
+  // Date range filter
   if (dateFrom || dateTo) {
-    query.registrationTimestamp = {};
-    if (dateFrom) query.registrationTimestamp.$gte = new Date(dateFrom);
-    if (dateTo) query.registrationTimestamp.$lte = new Date(dateTo);
+    filter.registrationTimestamp = {};
+    if (dateFrom) filter.registrationTimestamp.$gte = new Date(dateFrom);
+    if (dateTo) filter.registrationTimestamp.$lte = new Date(dateTo);
   }
+
+  // Purpose of visit (regex-escaped for safety)
   if (purposeOfVisit) {
-    query['stayDetails.purposeOfVisit'] = new RegExp(purposeOfVisit, 'i');
+    filter['stayDetails.purposeOfVisit'] = {
+      $regex: escapeRegex(purposeOfVisit),
+      $options: 'i',
+    };
   }
+
+  // Hotel / location filter
   if (hotel) {
-    query.hotel = hotel;
+    filter.hotel = hotel;
   } else if (city || state) {
-    if (city) hotelQuery.city = new RegExp(city, 'i');
-    if (state) hotelQuery.state = new RegExp(state, 'i');
+    const hotelFilter = {};
+    if (city) hotelFilter.city = { $regex: escapeRegex(city), $options: 'i' };
+    if (state) hotelFilter.state = { $regex: escapeRegex(state), $options: 'i' };
 
-    const matchingHotels = await Hotel.find(hotelQuery).select('_id');
-    const hotelIds = matchingHotels.map((h) => h._id);
-
-    query.hotel = { $in: hotelIds };
+    // .distinct() returns a plain array of ObjectIds — more efficient than .find().select()
+    const matchingHotelIds = await Hotel.find(hotelFilter).distinct('_id');
+    filter.hotel = { $in: matchingHotelIds };
   }
-  const guests = await Guest.find(query)
-    .populate('hotel', 'hotelName city')
-    .sort({ registrationTimestamp: -1 })
-    .limit(100);
-  res.status(200).json(new ApiResponse(200, guests));
+
+  const [totalDocs, guests] = await Promise.all([
+    Guest.countDocuments(filter),
+    Guest.find(filter)
+      .populate('hotel', HOTEL_PROJECTION)
+      .sort({ registrationTimestamp: -1 })
+      .skip(skip)
+      .limit(limit)
+      .lean(),
+  ]);
+
+  res.status(200).json(
+    new ApiResponse(200, {
+      guests,
+      pagination: buildPaginationMeta(totalDocs, page, limit),
+    })
+  );
 });
 
 module.exports = {

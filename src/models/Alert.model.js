@@ -25,7 +25,7 @@ const alertSchema = new mongoose.Schema(
     creatorModel: {
       type: String,
       required: true,
-      enum: ['Police', 'Regional Admin', 'System'], // Added 'System' for auto-watchlists
+      enum: ['Police', 'RegionalAdmin', 'System'], // Must match Mongoose model names for refPath
     },
   },
   { timestamps: true }
