@@ -8,6 +8,7 @@ const Watchlist = require('../models/Watchlist.model');
 const Alert = require('../models/Alert.model');
 const Notification = require('../models/Notification.model');
 const PoliceStation = require('../models/PoliceStation.model');
+const RegionalAdmin = require('../models/RegionalAdmin.model');
 
 const asyncHandler = require('express-async-handler');
 const logger = require('../utils/logger');
@@ -336,8 +337,19 @@ const checkWatchlistAndNotifyAsync = async (guest, hotel) => {
       isRead: false,
     }));
 
-    await Notification.insertMany(notificationDocs);
-    logger.info(`Sent ${officers.length} notifications to ${station.name} about watchlist match`);
+    // Also notify all Regional Admins
+    const admins = await RegionalAdmin.find({ status: 'Active' }).select('_id').lean();
+    const adminNotifications = admins.map((admin) => ({
+      recipientUser: admin._id,
+      recipientModel: 'RegionalAdmin',
+      message: notificationMessage,
+      isRead: false,
+    }));
+
+    await Notification.insertMany([...notificationDocs, ...adminNotifications]);
+    logger.info(
+      `Sent ${officers.length} police + ${admins.length} admin notifications about watchlist match`
+    );
 
     // OPTIMIZATION: Socket emit in non-blocking way (already in try-catch)
     try {
