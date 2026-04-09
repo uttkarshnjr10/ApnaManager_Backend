@@ -610,8 +610,8 @@ const checkoutGuest = asyncHandler(async (req, res) => {
       .then((pdfBuffer) => {
         return sendCheckoutEmail(
           guest.primaryGuest.email,
-          guest.primaryGuest.name,
-          guest.hotel.hotelName,
+          guest.hotel.email,
+          guest.toObject(),
           pdfBuffer
         );
       })
