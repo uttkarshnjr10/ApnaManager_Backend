@@ -1,7 +1,7 @@
-const PoliceStation = require('../models/PoliceStation.model');
+const PoliceStation = require('../models/police-station.model');
 const asyncHandler = require('express-async-handler');
-const ApiError = require('../utils/ApiError');
-const ApiResponse = require('../utils/ApiResponse');
+const ApiError = require('../utils/api-error');
+const ApiResponse = require('../utils/api-response');
 const logger = require('../utils/logger');
 
 const createStation = asyncHandler(async (req, res) => {

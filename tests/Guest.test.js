@@ -3,14 +3,14 @@ const mongoose = require('mongoose');
 const express = require('express');
 
 // --- Models with 'src' prefix ---
-const Guest = require('../src/models/Guest.model');
-const Hotel = require('../src/models/Hotel.model');
-const Watchlist = require('../src/models/Watchlist.model');
-const Alert = require('../src/models/Alert.model');
-const Notification = require('../src/models/Notification.model');
-const PoliceStation = require('../src/models/PoliceStation.model');
-const Police = require('../src/models/Police.model');
-const AccessLog = require('../src/models/AccessLog.model');
+const Guest = require('../src/models/guest.model');
+const Hotel = require('../src/models/hotel.model');
+const Watchlist = require('../src/models/watchlist.model');
+const Alert = require('../src/models/alert.model');
+const Notification = require('../src/models/notification.model');
+const PoliceStation = require('../src/models/police-station.model');
+const Police = require('../src/models/police.model');
+const AccessLog = require('../src/models/access-log.model');
 
 // Test DB helpers
 const { connectTestDB, closeTestDB, clearTestDB } = require('./testDb');
@@ -49,14 +49,14 @@ jest.mock('../src/middleware/auth.middleware', () => ({
 
 // Mock external services
 jest.mock('../src/utils/cloudinary');
-jest.mock('../src/utils/sendEmail');
+jest.mock('../src/utils/send-email');
 jest.mock('../src/config/socket');
 
 // Optionally mock Redis if you have it
 // jest.mock('ioredis');
 
 const { uploadToCloudinary } = require('../src/utils/cloudinary');
-const { sendCheckoutEmail } = require('../src/utils/sendEmail');
+const { sendCheckoutEmail } = require('../src/utils/send-email');
 const { getIO } = require('../src/config/socket');
 
 describe('Guest Registration API Tests', () => {

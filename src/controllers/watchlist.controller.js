@@ -1,7 +1,7 @@
-const Watchlist = require('../models/Watchlist.model');
+const Watchlist = require('../models/watchlist.model');
 const asyncHandler = require('express-async-handler');
-const ApiError = require('../utils/ApiError');
-const ApiResponse = require('../utils/ApiResponse');
+const ApiError = require('../utils/api-error');
+const ApiResponse = require('../utils/api-response');
 const logger = require('../utils/logger');
 
 const getWatchlistItems = asyncHandler(async (req, res) => {

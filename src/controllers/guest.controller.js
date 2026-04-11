@@ -1,22 +1,22 @@
 // src/controllers/guest.controller.js
 const mongoose = require('mongoose');
-const Guest = require('../models/Guest.model');
-const Hotel = require('../models/Hotel.model');
-const Police = require('../models/Police.model');
-const AccessLog = require('../models/AccessLog.model');
-const Watchlist = require('../models/Watchlist.model');
-const Alert = require('../models/Alert.model');
-const Notification = require('../models/Notification.model');
-const PoliceStation = require('../models/PoliceStation.model');
-const RegionalAdmin = require('../models/RegionalAdmin.model');
+const Guest = require('../models/guest.model');
+const Hotel = require('../models/hotel.model');
+const Police = require('../models/police.model');
+const AccessLog = require('../models/access-log.model');
+const Watchlist = require('../models/watchlist.model');
+const Alert = require('../models/alert.model');
+const Notification = require('../models/notification.model');
+const PoliceStation = require('../models/police-station.model');
+const RegionalAdmin = require('../models/regional-admin.model');
 
 const asyncHandler = require('express-async-handler');
 const logger = require('../utils/logger');
-const generateGuestPDF = require('../utils/pdfGenerator');
-const { generateGuestReportCSV } = require('../utils/reportGenerator');
-const { sendCheckoutEmail } = require('../utils/sendEmail');
-const ApiError = require('../utils/ApiError');
-const ApiResponse = require('../utils/ApiResponse');
+const generateGuestPDF = require('../utils/pdf-generator');
+const { generateGuestReportCSV } = require('../utils/report-generator');
+const { sendCheckoutEmail } = require('../utils/send-email');
+const ApiError = require('../utils/api-error');
+const ApiResponse = require('../utils/api-response');
 const { uploadToCloudinary } = require('../utils/cloudinary');
 const { getIO } = require('../config/socket');
 

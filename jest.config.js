@@ -3,9 +3,10 @@ module.exports = {
   coveragePathIgnorePatterns: ['/node_modules/'],
   testMatch: ['**/__tests__/**/*.js', '**/?(*.)+(spec|test).js'],
   collectCoverageFrom: [
-    'controllers/**/*.js',
-    'models/**/*.js',
-    'utils/**/*.js',
+    'src/controllers/**/*.js',
+    'src/models/**/*.js',
+    'src/utils/**/*.js',
+    'src/services/**/*.js',
     '!**/node_modules/**',
   ],
   setupFilesAfterEnv: ['<rootDir>/tests/setup.js'],

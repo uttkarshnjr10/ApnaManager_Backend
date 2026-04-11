@@ -1,11 +1,12 @@
 {
-  "name": "backend",
+  "name": "apnamanager-server",
   "version": "1.0.0",
-  "main": "seeder.js",
+  "main": "server.js",
   "scripts": {
     "dev": "nodemon --env-file .env server.js",
     "start": "node server.js",
     "seed": "node -r dotenv/config src/scripts/seeder.js",
+    "create-indexes": "node -r dotenv/config src/scripts/create-indexes.js",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",

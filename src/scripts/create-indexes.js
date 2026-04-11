@@ -1,6 +1,6 @@
 const mongoose = require('mongoose');
 const dotenv = require('dotenv');
-const Guest = require('../models/Guest.model');
+const Guest = require('../models/guest.model');
 
 dotenv.config();
 

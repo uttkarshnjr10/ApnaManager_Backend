@@ -46,7 +46,7 @@ EXPOSE 5000
 
 # Health check — adjust the endpoint to your actual health route
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD curl -f http://localhost:5000/api/health || exit 1
+    CMD curl -f http://localhost:5000/ || exit 1
 
 # Use tini as init system for proper signal forwarding (graceful shutdown)
 ENTRYPOINT ["/sbin/tini", "--"]

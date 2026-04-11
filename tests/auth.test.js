@@ -7,9 +7,9 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 
 // Models
-const Hotel = require('../src/models/Hotel.model');
-const Police = require('../src/models/Police.model');
-const RegionalAdmin = require('../src/models/RegionalAdmin.model');
+const Hotel = require('../src/models/hotel.model');
+const Police = require('../src/models/police.model');
+const RegionalAdmin = require('../src/models/regional-admin.model');
 
 // Test DB helpers
 const { connectTestDB, closeTestDB, clearTestDB } = require('./testDb');
@@ -18,8 +18,8 @@ const { connectTestDB, closeTestDB, clearTestDB } = require('./testDb');
 const authRoutes = require('../src/routes/auth.routes');
 
 // Mock external services
-jest.mock('../src/utils/sendEmail');
-jest.mock('../src/config/redisClient', () => ({
+jest.mock('../src/utils/send-email');
+jest.mock('../src/config/redis', () => ({
   client: {
     get: jest.fn(),
     set: jest.fn(),
@@ -27,8 +27,8 @@ jest.mock('../src/config/redisClient', () => ({
   },
 }));
 
-const { sendPasswordResetEmail } = require('../src/utils/sendEmail');
-const { client: redisClient } = require('../src/config/redisClient');
+const { sendPasswordResetEmail } = require('../src/utils/send-email');
+const { client: redisClient } = require('../src/config/redis');
 
 describe('Authentication API Tests', () => {
   let app;

@@ -1,7 +1,7 @@
 // 1. FIX: Import Hotel model directly
-const Hotel = require('../models/Hotel.model');
+const Hotel = require('../models/hotel.model');
 const asyncHandler = require('express-async-handler');
-const ApiError = require('../utils/ApiError');
+const ApiError = require('../utils/api-error');
 const logger = require('../utils/logger');
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 

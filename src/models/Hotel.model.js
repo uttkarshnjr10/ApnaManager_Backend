@@ -4,7 +4,7 @@ const {
   preSaveHashPassword,
   matchPasswordMethod,
   createPasswordResetTokenMethod,
-} = require('./schemas/baseAuth.schema');
+} = require('./schemas/base-auth.schema');
 
 const roomSchema = new mongoose.Schema({
   roomNumber: { type: String, required: true, trim: true },

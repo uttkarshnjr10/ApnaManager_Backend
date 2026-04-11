@@ -4,7 +4,7 @@ const http = require('http'); // Required for stable Socket.io
 dotenv.config();
 
 const connectDB = require('./src/config/db');
-const { connectRedis } = require('./src/config/redisClient');
+const { connectRedis } = require('./src/config/redis');
 const logger = require('./src/utils/logger');
 const { initSocket } = require('./src/config/socket');
 

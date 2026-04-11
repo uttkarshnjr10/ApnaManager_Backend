@@ -4,13 +4,13 @@ const mongoose = require('mongoose');
 const express = require('express');
 
 // Models
-const Hotel = require('../src/models/Hotel.model');
-const Police = require('../src/models/Police.model');
-const RegionalAdmin = require('../src/models/RegionalAdmin.model');
-const HotelInquiry = require('../src/models/HotelInquiry.model');
-const AccessLog = require('../src/models/AccessLog.model');
-const Guest = require('../src/models/Guest.model');
-const PoliceStation = require('../src/models/PoliceStation.model');
+const Hotel = require('../src/models/hotel.model');
+const Police = require('../src/models/police.model');
+const RegionalAdmin = require('../src/models/regional-admin.model');
+const HotelInquiry = require('../src/models/hotel-inquiry.model');
+const AccessLog = require('../src/models/access-log.model');
+const Guest = require('../src/models/guest.model');
+const PoliceStation = require('../src/models/police-station.model');
 
 // Test DB helpers
 const { connectTestDB, closeTestDB, clearTestDB } = require('./testDb');
@@ -71,11 +71,11 @@ jest.mock('../src/middleware/auth.middleware', () => ({
 }));
 
 // Mock external services
-jest.mock('../src/utils/sendEmail');
-jest.mock('../src/utils/aiService');
+jest.mock('../src/utils/send-email');
+jest.mock('../src/utils/ai-service');
 
-const { sendCredentialsEmail } = require('../src/utils/sendEmail');
-const { generateDailySummary } = require('../src/utils/aiService');
+const { sendCredentialsEmail } = require('../src/utils/send-email');
+const { generateDailySummary } = require('../src/utils/ai-service');
 
 describe('User Management API Tests', () => {
   let app;

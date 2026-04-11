@@ -1,5 +1,5 @@
 const axios = require('axios');
-const Hotel = require('../models/Hotel.model'); // Adjust path to your model
+const Hotel = require('../models/hotel.model');
 
 // SIMPLE IN-MEMORY CACHE
 // In production with multiple server instances, use Redis.

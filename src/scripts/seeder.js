@@ -4,7 +4,7 @@ const dotenv = require('dotenv');
 const logger = require('../utils/logger');
 
 // 1. FIX: Import the specific RegionalAdmin model
-const RegionalAdmin = require('../models/RegionalAdmin.model');
+const RegionalAdmin = require('../models/regional-admin.model');
 
 dotenv.config();
 

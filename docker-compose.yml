@@ -1,6 +1,6 @@
 services:
   # ── Backend Application ──────────────────────────
-  guestguard-backend:
+  apnamanager-backend:
     build:
       context: .
       dockerfile: Dockerfile
