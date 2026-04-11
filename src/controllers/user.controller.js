@@ -1,18 +1,18 @@
 // src/controllers/user.controller.js
-const Hotel = require('../models/Hotel.model');
-const Police = require('../models/Police.model');
-const RegionalAdmin = require('../models/RegionalAdmin.model');
-const HotelInquiry = require('../models/HotelInquiry.model');
-const AccessLog = require('../models/AccessLog.model');
-const Guest = require('../models/Guest.model');
+const Hotel = require('../models/hotel.model');
+const Police = require('../models/police.model');
+const RegionalAdmin = require('../models/regional-admin.model');
+const HotelInquiry = require('../models/hotel-inquiry.model');
+const AccessLog = require('../models/access-log.model');
+const Guest = require('../models/guest.model');
 
 const asyncHandler = require('express-async-handler');
 const logger = require('../utils/logger');
-const { sendCredentialsEmail } = require('../utils/sendEmail');
-const { generateDailySummary } = require('../utils/aiService');
+const { sendCredentialsEmail } = require('../utils/send-email');
+const { generateDailySummary } = require('../utils/ai-service');
 const crypto = require('crypto');
-const ApiError = require('../utils/ApiError');
-const ApiResponse = require('../utils/ApiResponse');
+const ApiError = require('../utils/api-error');
+const ApiResponse = require('../utils/api-response');
 const NodeCache = require('node-cache');
 
 // Initialize Cache (1 hour TTL)

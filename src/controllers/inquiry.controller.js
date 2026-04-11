@@ -1,8 +1,8 @@
 // src/controllers/inquiry.controller.js
-const HotelInquiry = require('../models/HotelInquiry.model');
+const HotelInquiry = require('../models/hotel-inquiry.model');
 const asyncHandler = require('express-async-handler');
-const ApiError = require('../utils/ApiError');
-const ApiResponse = require('../utils/ApiResponse');
+const ApiError = require('../utils/api-error');
+const ApiResponse = require('../utils/api-response');
 const { uploadToCloudinary, generateSignedUrl } = require('../utils/cloudinary'); // Import utilities
 
 const submitHotelInquiry = asyncHandler(async (req, res) => {

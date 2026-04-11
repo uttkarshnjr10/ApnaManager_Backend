@@ -1,8 +1,8 @@
 const sgMail = require('@sendgrid/mail');
 const logger = require('./logger');
-const credentialsTemplate = require('./emailTemplates/credentialsTemplate');
-const checkoutTemplate = require('./emailTemplates/checkoutTemplate');
-const resetPasswordTemplate = require('./emailTemplates/resetPasswordTemplate');
+const credentialsTemplate = require('./email-templates/credentials.template');
+const checkoutTemplate = require('./email-templates/checkout.template');
+const resetPasswordTemplate = require('./email-templates/reset-password.template');
 
 if (!process.env.SENDGRID_API_KEY || !process.env.FROM_EMAIL) {
   logger.error('sendgrid api key or from_email is not defined in environment variables.');

@@ -1,16 +1,16 @@
 // src/controllers/police.controller.js
 
-const Guest = require('../models/Guest.model');
-const AccessLog = require('../models/AccessLog.model');
-const Hotel = require('../models/Hotel.model');
-const Alert = require('../models/Alert.model');
-const Remark = require('../models/Remark.model');
-const CaseReport = require('../models/CaseReport.model');
+const Guest = require('../models/guest.model');
+const AccessLog = require('../models/access-log.model');
+const Hotel = require('../models/hotel.model');
+const Alert = require('../models/alert.model');
+const Remark = require('../models/remark.model');
+const CaseReport = require('../models/case-report.model');
 
-const asyncHandler = require('../utils/asyncHandler');
+const asyncHandler = require('../utils/async-handler');
 const logger = require('../utils/logger');
-const ApiError = require('../utils/ApiError');
-const ApiResponse = require('../utils/ApiResponse');
+const ApiError = require('../utils/api-error');
+const ApiResponse = require('../utils/api-response');
 const { generateSignedUrl } = require('../utils/cloudinary');
 
 // ============================================================

@@ -1,12 +1,12 @@
 // src/middleware/auth.middleware.js
 const jwt = require('jsonwebtoken');
 const asyncHandler = require('express-async-handler');
-const Hotel = require('../models/Hotel.model');
-const Police = require('../models/Police.model');
-const RegionalAdmin = require('../models/RegionalAdmin.model');
+const Hotel = require('../models/hotel.model');
+const Police = require('../models/police.model');
+const RegionalAdmin = require('../models/regional-admin.model');
 const logger = require('../utils/logger');
-const { client: redisClient } = require('../config/redisClient');
-const ApiError = require('../utils/ApiError');
+const { client: redisClient } = require('../config/redis');
+const ApiError = require('../utils/api-error');
 
 const protect = asyncHandler(async (req, res, next) => {
   let token;

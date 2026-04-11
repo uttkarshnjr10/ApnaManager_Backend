@@ -1,8 +1,8 @@
 // src/controllers/notification.controller.js
-const Notification = require('../models/Notification.model');
-const asyncHandler = require('../utils/asyncHandler');
-const ApiError = require('../utils/ApiError');
-const ApiResponse = require('../utils/ApiResponse');
+const Notification = require('../models/notification.model');
+const asyncHandler = require('../utils/async-handler');
+const ApiError = require('../utils/api-error');
+const ApiResponse = require('../utils/api-response');
 
 /**
  * Fetch the most recent notifications for the authenticated user.

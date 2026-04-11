@@ -1,8 +1,8 @@
 // 1. FIX: Import the new Hotel model
-const Hotel = require('../models/Hotel.model');
+const Hotel = require('../models/hotel.model');
 const asyncHandler = require('express-async-handler');
-const ApiError = require('../utils/ApiError');
-const ApiResponse = require('../utils/ApiResponse');
+const ApiError = require('../utils/api-error');
+const ApiResponse = require('../utils/api-response');
 const mongoose = require('mongoose');
 
 const getMyRooms = asyncHandler(async (req, res) => {

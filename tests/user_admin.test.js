@@ -1,15 +1,15 @@
 const request = require('supertest');
 const { connectTestDB, closeTestDB, clearTestDB } = require('./testDb');
 const app = require('../src/app');
-const RegionalAdmin = require('../src/models/RegionalAdmin.model');
-const Hotel = require('../src/models/Hotel.model');
+const RegionalAdmin = require('../src/models/regional-admin.model');
+const Hotel = require('../src/models/hotel.model');
 
 // Mock External Services
-jest.mock('../src/config/redisClient', () => ({
+jest.mock('../src/config/redis', () => ({
   client: { get: jest.fn(), set: jest.fn() },
 }));
 
-jest.mock('../src/utils/sendEmail', () => ({
+jest.mock('../src/utils/send-email', () => ({
   sendCredentialsEmail: jest.fn().mockResolvedValue(true),
 }));
 

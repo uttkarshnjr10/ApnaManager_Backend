@@ -1,15 +1,15 @@
 // src/controllers/auth.controller.js
-const Hotel = require('../models/Hotel.model');
-const Police = require('../models/Police.model');
-const RegionalAdmin = require('../models/RegionalAdmin.model');
+const Hotel = require('../models/hotel.model');
+const Police = require('../models/police.model');
+const RegionalAdmin = require('../models/regional-admin.model');
 const jwt = require('jsonwebtoken');
 const asyncHandler = require('express-async-handler');
 const logger = require('../utils/logger');
-const { client: redisClient } = require('../config/redisClient');
-const ApiError = require('../utils/ApiError');
-const ApiResponse = require('../utils/ApiResponse');
+const { client: redisClient } = require('../config/redis');
+const ApiError = require('../utils/api-error');
+const ApiResponse = require('../utils/api-response');
 const crypto = require('crypto');
-const { sendPasswordResetEmail } = require('../utils/sendEmail');
+const { sendPasswordResetEmail } = require('../utils/send-email');
 
 // ============================================================
 // HELPER FUNCTIONS

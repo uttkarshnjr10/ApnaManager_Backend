@@ -1,5 +1,5 @@
 const logger = require('../utils/logger');
-const ApiError = require('../utils/ApiError');
+const ApiError = require('../utils/api-error');
 
 // handle 404 Routes
 const notFound = (req, res, next) => {

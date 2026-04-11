@@ -1,7 +1,7 @@
 const { Server } = require('socket.io');
 const jwt = require('jsonwebtoken');
 const logger = require('../utils/logger');
-const Police = require('../models/Police.model');
+const Police = require('../models/police.model');
 
 let io;
 

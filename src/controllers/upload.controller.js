@@ -1,7 +1,7 @@
 const asyncHandler = require('express-async-handler');
 const logger = require('../utils/logger');
-const ApiError = require('../utils/ApiError');
-const ApiResponse = require('../utils/ApiResponse');
+const ApiError = require('../utils/api-error');
+const ApiResponse = require('../utils/api-response');
 const { uploadToCloudinary } = require('../utils/cloudinary'); // Use the utility
 
 const uploadSingleImage = asyncHandler(async (req, res) => {

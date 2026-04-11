@@ -1,4 +1,4 @@
-// src/config/redisClient.js
+// src/config/redis.js
 const redis = require('redis');
 const logger = require('../utils/logger');
 
