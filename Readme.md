@@ -59,50 +59,53 @@ graph LR
 
 ### Layered Design
 
-| Layer | Responsibility |
-|---|---|
-| **Routes** | HTTP method + path mapping, middleware chaining |
-| **Controllers** | Request/response handling, input validation |
-| **Models** | Mongoose schemas, data validation, pre-save hooks |
-| **Middleware** | Auth (JWT + Redis blacklist), error handling, file uploads |
-| **Utils** | Cloudinary, email, PDF/CSV generation, AI service |
-| **Config** | Database, Redis, and Socket.io initialization |
+| Layer           | Responsibility                                             |
+| --------------- | ---------------------------------------------------------- |
+| **Routes**      | HTTP method + path mapping, middleware chaining            |
+| **Controllers** | Request/response handling, input validation                |
+| **Models**      | Mongoose schemas, data validation, pre-save hooks          |
+| **Middleware**  | Auth (JWT + Redis blacklist), error handling, file uploads |
+| **Utils**       | Cloudinary, email, PDF/CSV generation, AI service          |
+| **Config**      | Database, Redis, and Socket.io initialization              |
 
 ---
 
 ## Tech Stack
 
-| Category | Technology |
-|---|---|
-| Runtime | Node.js 20+ |
-| Framework | Express.js 4.x |
-| Database | MongoDB (Mongoose ODM) |
-| Caching | Redis (JWT blacklisting & session security) |
-| Auth | JWT via HttpOnly cookies (XSS-safe) |
-| File Storage | Cloudinary (parallel streaming uploads) |
-| Email | SendGrid (transactional emails) |
-| AI | Google Gemini (daily report summaries) |
-| Payments | Stripe (subscription billing) |
-| Real-time | Socket.io (police alert notifications) |
-| PDF | PDFKit (checkout receipts) |
-| DevOps | Docker, Docker Compose, GitHub Actions CI |
+| Category     | Technology                                  |
+| ------------ | ------------------------------------------- |
+| Runtime      | Node.js 20+                                 |
+| Framework    | Express.js 4.x                              |
+| Database     | MongoDB (Mongoose ODM)                      |
+| Caching      | Redis (JWT blacklisting & session security) |
+| Auth         | JWT via HttpOnly cookies (XSS-safe)         |
+| File Storage | Cloudinary (parallel streaming uploads)     |
+| Email        | SendGrid (transactional emails)             |
+| AI           | Google Gemini (daily report summaries)      |
+| Payments     | Stripe (subscription billing)               |
+| Real-time    | Socket.io (police alert notifications)      |
+| PDF          | PDFKit (checkout receipts)                  |
+| DevOps       | Docker, Docker Compose, GitHub Actions CI   |
 
 ---
 
 ## Key Features
 
 ### Security
+
 - **HttpOnly Cookie Auth** — Tokens handled server-side, preventing XSS attacks
 - **Redis Token Blacklisting** — Immediate logout via token invalidation
 - **RBAC** — Strict role-based access (Hotel, Police, Regional Admin)
 - **Signed URLs** — Cloudinary images served via time-limited signed URLs
 
 ### Performance
+
 - **Parallel Image Uploads** — All guest images streamed to Cloudinary concurrently
 - **Database Indexing** — Compound indexes on frequently queried fields
 - **In-memory Caching** — Weather data and AI reports cached to reduce API calls
 
 ### Core Workflow
+
 - **Real-time Watchlist Matching** — Automatic ID number checks against police watchlist
 - **Automated PDF Receipts** — Professional checkout PDFs emailed to guests and hotels
 - **CSV Report Generation** — Date-range guest reports for police compliance
@@ -217,24 +220,24 @@ The server starts at `http://localhost:5000`.
 
 Create a `.env` file in the `server/` directory:
 
-| Variable | Required | Description |
-|---|---|---|
-| `PORT` | No | Server port (default: `5000`) |
-| `MONGO_URI` | Yes | MongoDB connection string |
-| `JWT_SECRET` | Yes | Secret key for JWT signing |
-| `REDIS_HOST` | Yes | Redis hostname |
-| `REDIS_PORT` | Yes | Redis port (default: `6379`) |
-| `CLOUDINARY_CLOUD_NAME` | Yes | Cloudinary cloud name |
-| `CLOUDINARY_API_KEY` | Yes | Cloudinary API key |
-| `CLOUDINARY_API_SECRET` | Yes | Cloudinary API secret |
-| `SENDGRID_API_KEY` | Yes | SendGrid API key |
-| `FROM_EMAIL` | Yes | Sender email address |
-| `CORS_ALLOWED_ORIGINS` | Yes | Comma-separated allowed origins |
-| `GEMINI_API_KEY` | No | Google Gemini API key for AI reports |
-| `STRIPE_SECRET_KEY` | No | Stripe secret key for payments |
-| `STRIPE_WEBHOOK_SECRET` | No | Stripe webhook signing secret |
-| `WEATHER_API_KEY` | No | OpenWeatherMap API key |
-| `DEFAULT_CITY` | No | Default city for weather (default: `Patna, Bihar, IN`) |
+| Variable                | Required | Description                                            |
+| ----------------------- | -------- | ------------------------------------------------------ |
+| `PORT`                  | No       | Server port (default: `5000`)                          |
+| `MONGO_URI`             | Yes      | MongoDB connection string                              |
+| `JWT_SECRET`            | Yes      | Secret key for JWT signing                             |
+| `REDIS_HOST`            | Yes      | Redis hostname                                         |
+| `REDIS_PORT`            | Yes      | Redis port (default: `6379`)                           |
+| `CLOUDINARY_CLOUD_NAME` | Yes      | Cloudinary cloud name                                  |
+| `CLOUDINARY_API_KEY`    | Yes      | Cloudinary API key                                     |
+| `CLOUDINARY_API_SECRET` | Yes      | Cloudinary API secret                                  |
+| `SENDGRID_API_KEY`      | Yes      | SendGrid API key                                       |
+| `FROM_EMAIL`            | Yes      | Sender email address                                   |
+| `CORS_ALLOWED_ORIGINS`  | Yes      | Comma-separated allowed origins                        |
+| `GEMINI_API_KEY`        | No       | Google Gemini API key for AI reports                   |
+| `STRIPE_SECRET_KEY`     | No       | Stripe secret key for payments                         |
+| `STRIPE_WEBHOOK_SECRET` | No       | Stripe webhook signing secret                          |
+| `WEATHER_API_KEY`       | No       | OpenWeatherMap API key                                 |
+| `DEFAULT_CITY`          | No       | Default city for weather (default: `Patna, Bihar, IN`) |
 
 ---
 
@@ -252,6 +255,7 @@ docker compose down
 ```
 
 The compose file provisions:
+
 - **App** — Node.js application on port 5000
 - **MongoDB** — Database on port 27017 with persistent volume
 - **Redis** — Cache on port 6379 with password auth
@@ -278,38 +282,42 @@ Tests use **Jest** with **mongodb-memory-server** for isolated database testing.
 ## API Reference
 
 ### Authentication
-| Method | Endpoint | Access | Description |
-|---|---|---|---|
-| `POST` | `/api/auth/login` | Public | Login with email/password |
-| `POST` | `/api/auth/logout` | Private | Logout + token blacklist |
-| `POST` | `/api/auth/forgot-password` | Public | Request password reset email |
-| `POST` | `/api/auth/reset-password` | Public | Reset password with token |
-| `POST` | `/api/auth/change-password` | Public | Forced password change |
+
+| Method | Endpoint                    | Access  | Description                  |
+| ------ | --------------------------- | ------- | ---------------------------- |
+| `POST` | `/api/auth/login`           | Public  | Login with email/password    |
+| `POST` | `/api/auth/logout`          | Private | Logout + token blacklist     |
+| `POST` | `/api/auth/forgot-password` | Public  | Request password reset email |
+| `POST` | `/api/auth/reset-password`  | Public  | Reset password with token    |
+| `POST` | `/api/auth/change-password` | Public  | Forced password change       |
 
 ### Guest Management
-| Method | Endpoint | Access | Description |
-|---|---|---|---|
-| `POST` | `/api/guests/register` | Hotel | Register new guest |
-| `GET` | `/api/guests/all` | Hotel | Get all hotel guests |
-| `GET` | `/api/guests/today` | Hotel | Get today's registrations |
-| `PUT` | `/api/guests/:id/checkout` | Hotel | Checkout guest |
-| `GET` | `/api/guests/report` | Hotel | CSV report (date range) |
+
+| Method | Endpoint                   | Access | Description               |
+| ------ | -------------------------- | ------ | ------------------------- |
+| `POST` | `/api/guests/register`     | Hotel  | Register new guest        |
+| `GET`  | `/api/guests/all`          | Hotel  | Get all hotel guests      |
+| `GET`  | `/api/guests/today`        | Hotel  | Get today's registrations |
+| `PUT`  | `/api/guests/:id/checkout` | Hotel  | Checkout guest            |
+| `GET`  | `/api/guests/report`       | Hotel  | CSV report (date range)   |
 
 ### Police
-| Method | Endpoint | Access | Description |
-|---|---|---|---|
-| `POST` | `/api/police/search` | Police | Search guest records |
-| `GET` | `/api/police/dashboard` | Police | Dashboard statistics |
-| `POST` | `/api/police/alerts` | Police | Create guest alert |
-| `GET` | `/api/police/alerts` | Police | List all alerts |
+
+| Method | Endpoint                | Access | Description          |
+| ------ | ----------------------- | ------ | -------------------- |
+| `POST` | `/api/police/search`    | Police | Search guest records |
+| `GET`  | `/api/police/dashboard` | Police | Dashboard statistics |
+| `POST` | `/api/police/alerts`    | Police | Create guest alert   |
+| `GET`  | `/api/police/alerts`    | Police | List all alerts      |
 
 ### Admin
-| Method | Endpoint | Access | Description |
-|---|---|---|---|
-| `POST` | `/api/users/register` | Admin | Create new user |
-| `GET` | `/api/users/admin/dashboard` | Admin | System metrics |
-| `PUT` | `/api/users/:id/status` | Admin | Suspend/activate user |
-| `DELETE` | `/api/users/:id` | Admin | Delete user |
+
+| Method   | Endpoint                     | Access | Description           |
+| -------- | ---------------------------- | ------ | --------------------- |
+| `POST`   | `/api/users/register`        | Admin  | Create new user       |
+| `GET`    | `/api/users/admin/dashboard` | Admin  | System metrics        |
+| `PUT`    | `/api/users/:id/status`      | Admin  | Suspend/activate user |
+| `DELETE` | `/api/users/:id`             | Admin  | Delete user           |
 
 > For protected routes, authenticate via `POST /api/auth/login`. The system sets an `HttpOnly` cookie automatically.
 

@@ -55,7 +55,7 @@ if (isProduction) {
     new transports.File({
       filename: path.join(logDir, 'combined.log'),
       maxsize: 5 * 1024 * 1024, // 5MB per file
-      maxFiles: 5,               // Keep last 5 rotated files
+      maxFiles: 5, // Keep last 5 rotated files
       tailable: true,
     })
   );

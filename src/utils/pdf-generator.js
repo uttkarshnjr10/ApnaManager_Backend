@@ -360,7 +360,10 @@ const drawSectionTitle = (doc, title) => {
     .font(CONFIG.fonts.bold)
     .fontSize(CONFIG.fontSizes.section)
     .fillColor(CONFIG.colors.brand)
-    .text(title.toUpperCase(), area.left, doc.y, { width: area.contentWidth, characterSpacing: 0.5 });
+    .text(title.toUpperCase(), area.left, doc.y, {
+      width: area.contentWidth,
+      characterSpacing: 0.5,
+    });
 
   const lineY = doc.y + 3;
   doc
@@ -400,7 +403,7 @@ const drawKeyValueGrid = (doc, entries, columns = 2) => {
 
     rowEntries.forEach((entry, columnIndex) => {
       const x = area.left + columnIndex * (columnWidth + columnGap);
-      const labelWidth = Math.min(100, Math.floor(columnWidth * 0.40));
+      const labelWidth = Math.min(100, Math.floor(columnWidth * 0.4));
       const valueX = x + labelWidth + 4;
       const valueWidth = columnWidth - labelWidth - 4;
 
@@ -491,9 +494,7 @@ const drawAccompanyingGuestSection = (doc, guest) => {
   let tableY = doc.y;
 
   // Header background
-  doc
-    .rect(tableX, tableY, area.contentWidth, headerHeight)
-    .fill(CONFIG.colors.tableHeaderBg);
+  doc.rect(tableX, tableY, area.contentWidth, headerHeight).fill(CONFIG.colors.tableHeaderBg);
 
   // Header border
   doc
@@ -536,9 +537,7 @@ const drawAccompanyingGuestSection = (doc, guest) => {
       .stroke();
 
     const age = calculateAge(g.dob);
-    const dobAge = g.dob
-      ? `${formatDate(g.dob)}${age !== null ? ` (${age})` : ''}`
-      : 'N/A';
+    const dobAge = g.dob ? `${formatDate(g.dob)}${age !== null ? ` (${age})` : ''}` : 'N/A';
 
     const rowData = [
       String(index + 1),
@@ -670,9 +669,7 @@ const loadReceiptImages = async (guest) => {
 // ============================================================
 
 const drawImagePlaceholder = (doc, x, y, width, height) => {
-  doc
-    .rect(x, y, width, height)
-    .fillAndStroke(CONFIG.colors.placeholderBg, CONFIG.colors.divider);
+  doc.rect(x, y, width, height).fillAndStroke(CONFIG.colors.placeholderBg, CONFIG.colors.divider);
 
   const textY = y + height / 2 - 6;
   doc
@@ -689,17 +686,11 @@ const drawImageCard = (doc, options) => {
   const { x, y, width, height, title, imageBuffer } = options;
 
   // Card border
-  doc
-    .roundedRect(x, y, width, height, 6)
-    .lineWidth(0.8)
-    .strokeColor(CONFIG.colors.border)
-    .stroke();
+  doc.roundedRect(x, y, width, height, 6).lineWidth(0.8).strokeColor(CONFIG.colors.border).stroke();
 
   // Title bar
   const titleBarHeight = 22;
-  doc
-    .rect(x + 0.5, y + 0.5, width - 1, titleBarHeight)
-    .fill(CONFIG.colors.tableHeaderBg);
+  doc.rect(x + 0.5, y + 0.5, width - 1, titleBarHeight).fill(CONFIG.colors.tableHeaderBg);
 
   doc
     .font(CONFIG.fonts.bold)
