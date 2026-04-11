@@ -451,12 +451,8 @@ const registerGuest = asyncHandler(async (req, res) => {
     hotel: hotelUserId,
   });
 
-  // STEP 7: Update room status (run in parallel with response preparation)
-  // Using updateRoomStatus helper for better error handling
-  updateRoomStatus(hotel, stayDetailsData.roomNumber, guest._id).catch((error) => {
-    logger.error(`Failed to update room status: ${error.message}`);
-    // Don't throw - guest is already created, room update is secondary
-  });
+  // STEP 7: Update room status
+  await updateRoomStatus(hotel, stayDetailsData.roomNumber, guest._id);
 
   // STEP 8: Send immediate response to user (don't wait for watchlist check)
   res.status(201).json(new ApiResponse(201, guest, 'Guest registered successfully'));

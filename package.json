@@ -42,7 +42,8 @@
     "sharp": "^0.34.5",
     "socket.io": "^4.8.3",
     "streamifier": "^0.1.1",
-    "stripe": "^19.3.0"
+    "stripe": "^19.3.0",
+    "winston": "^3.19.0"
   },
   "devDependencies": {
     "eslint": "^9.39.2",

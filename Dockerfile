@@ -35,9 +35,10 @@ COPY package.json ./
 COPY server.js ./
 COPY src/ ./src/
 
-# Security: create non-root user and set ownership
+# Security: create non-root user, logs directory, and set ownership
 RUN addgroup -g 1001 -S appgroup \
     && adduser -S appuser -u 1001 -G appgroup \
+    && mkdir -p /usr/src/app/logs \
     && chown -R appuser:appgroup /usr/src/app
 
 USER appuser

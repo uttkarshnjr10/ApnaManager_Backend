@@ -35,10 +35,9 @@ const connectRedis = async () => {
   try {
     await client.connect();
   } catch (err) {
-    logger.error(`Failed to connect to Redis initially: ${err.message}`);
-    if (process.env.NODE_ENV === 'production') {
-      process.exit(1);
-    }
+    logger.error(`Failed to connect to Redis: ${err.message}`);
+    // Re-throw so caller can decide whether this is fatal
+    throw err;
   }
 };
 

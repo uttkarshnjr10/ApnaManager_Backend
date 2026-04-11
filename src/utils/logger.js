@@ -1,28 +1,97 @@
-const getTimestamp = () => new Date().toLocaleTimeString();
+// src/utils/logger.js
+const { createLogger, format, transports } = require('winston');
+const path = require('path');
 
-const info = (message) => {
-  console.log(`[info] ${getTimestamp()}: ${message}`);
-};
+const isProduction = process.env.NODE_ENV === 'production';
+const isTest = process.env.NODE_ENV === 'test';
 
-const warn = (message) => {
-  console.warn(`[warn] ${getTimestamp()}: ${message}`);
-};
+// ─── Custom Formats ────────────────────────────────────────────
 
-const error = (message) => {
-  console.error(`[error] ${getTimestamp()}: ${message}`);
-};
+/**
+ * Production format: structured JSON for log aggregators (Datadog, ELK, etc.)
+ * Example: {"level":"info","message":"Server started","timestamp":"2026-04-11T18:30:00.000Z","service":"apnamanager"}
+ */
+const productionFormat = format.combine(
+  format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
+  format.errors({ stack: true }),
+  format.json()
+);
 
-module.exports = {
-  info,
-  warn,
-  error,
-};
+/**
+ * Development format: colorized, human-readable console output.
+ * Example: 2026-04-11 18:30:00 [info]: Server started on port 5000
+ */
+const developmentFormat = format.combine(
+  format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
+  format.errors({ stack: true }),
+  format.colorize({ all: true }),
+  format.printf(({ timestamp, level, message, stack, ...meta }) => {
+    let log = `${timestamp} [${level}]: ${message}`;
+    if (stack) log += `\n${stack}`;
+    if (Object.keys(meta).length > 0) {
+      log += ` ${JSON.stringify(meta)}`;
+    }
+    return log;
+  })
+);
 
-/*
-const colors = {
-  info: '\x1b[36m', // Cyan
-  warn: '\x1b[33m', // Yellow
-  error: '\x1b[31m', // Red
-  reset: '\x1b[0m', // Reset color
-};
-*/
+// ─── Transport Configuration ───────────────────────────────────
+
+const logTransports = [];
+
+// Console transport (always active, except in test where it's silent)
+logTransports.push(
+  new transports.Console({
+    silent: isTest,
+  })
+);
+
+// File transports (production only — write structured logs to disk)
+if (isProduction) {
+  const logDir = process.env.LOG_DIR || 'logs';
+
+  // All logs (info and above)
+  logTransports.push(
+    new transports.File({
+      filename: path.join(logDir, 'combined.log'),
+      maxsize: 5 * 1024 * 1024, // 5MB per file
+      maxFiles: 5,               // Keep last 5 rotated files
+      tailable: true,
+    })
+  );
+
+  // Error logs only
+  logTransports.push(
+    new transports.File({
+      filename: path.join(logDir, 'error.log'),
+      level: 'error',
+      maxsize: 5 * 1024 * 1024,
+      maxFiles: 5,
+      tailable: true,
+    })
+  );
+}
+
+// ─── Logger Instance ───────────────────────────────────────────
+
+const logger = createLogger({
+  level: isProduction ? 'info' : 'debug',
+  format: isProduction ? productionFormat : developmentFormat,
+  defaultMeta: { service: 'apnamanager' },
+  transports: logTransports,
+  // Prevent unhandled rejections from crashing the process
+  exitOnError: false,
+});
+
+// ─── Uncaught Exception / Rejection Handlers ──────────────────
+
+if (isProduction) {
+  logger.exceptions.handle(
+    new transports.File({ filename: path.join(process.env.LOG_DIR || 'logs', 'exceptions.log') })
+  );
+  logger.rejections.handle(
+    new transports.File({ filename: path.join(process.env.LOG_DIR || 'logs', 'rejections.log') })
+  );
+}
+
+module.exports = logger;
