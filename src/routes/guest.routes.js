@@ -5,6 +5,7 @@ const {
   checkoutGuest,
   getTodaysGuests,
   getAllGuests,
+  getGuestById,
   generateGuestReport,
 } = require('../controllers/guest.controller');
 const { protect, authorize } = require('../middleware/auth.middleware');
@@ -14,7 +15,8 @@ const { photoUpload } = require('../middleware/upload.middleware');
 router.post('/register', protect, authorize('Hotel'), photoUpload.any(), registerGuest);
 router.get('/today', protect, authorize('Hotel'), getTodaysGuests);
 router.get('/all', protect, authorize('Hotel'), getAllGuests);
-router.put('/:id/checkout', protect, authorize('Hotel'), checkoutGuest);
 router.get('/report', protect, authorize('Hotel'), generateGuestReport);
+router.get('/:id', protect, authorize('Hotel'), getGuestById);
+router.put('/:id/checkout', protect, authorize('Hotel'), checkoutGuest);
 
 module.exports = router;

@@ -255,8 +255,61 @@ const drawHeader = (doc, guest, documentRef) => {
 
   const headerY = area.top + barHeight + 14;
 
+  // ── Right side: Meta info box (draw first to calculate left width) ──
+  const metaBoxWidth = 190;
+  const metaPadding = 10;
+  const metaRowHeight = 14;
+  const metaRows = [
+    { label: 'Reference:', value: documentRef },
+    { label: 'Customer ID:', value: safeText(guest?.customerId) },
+    { label: 'Generated:', value: formatDateTime(new Date()) },
+    { label: 'Status:', value: safeText(guest?.status, 'Checked-Out') },
+  ];
+  const metaContentHeight = metaRows.length * metaRowHeight + metaPadding;
+  const metaBoxHeight = metaContentHeight + metaPadding;
+  const metaX = area.right - metaBoxWidth;
+  const metaY = headerY;
+
+  // Box background + border
+  doc
+    .roundedRect(metaX, metaY, metaBoxWidth, metaBoxHeight, 5)
+    .lineWidth(0.8)
+    .fillAndStroke(CONFIG.colors.sectionBg, CONFIG.colors.border);
+
+  // Meta rows — structured grid: label left, value right
+  const labelColWidth = 72;
+  const valueColWidth = metaBoxWidth - labelColWidth - metaPadding * 2;
+  let rowY = metaY + metaPadding;
+
+  metaRows.forEach((row) => {
+    // Label (left-aligned)
+    doc
+      .font(CONFIG.fonts.bold)
+      .fontSize(7.5)
+      .fillColor(CONFIG.colors.textMuted)
+      .text(row.label, metaX + metaPadding, rowY, {
+        width: labelColWidth,
+        lineBreak: false,
+      });
+
+    // Value (right-aligned)
+    doc
+      .font(CONFIG.fonts.normal)
+      .fontSize(7.5)
+      .fillColor(CONFIG.colors.textPrimary)
+      .text(safeText(row.value), metaX + metaPadding + labelColWidth, rowY, {
+        width: valueColWidth,
+        align: 'right',
+        lineBreak: false,
+      });
+
+    rowY += metaRowHeight;
+  });
+
   // ── Left side: Logo + Hotel info ──
+  const leftWidth = metaX - area.left - 16;
   let infoX = area.left;
+
   if (fs.existsSync(LOGO_PATH)) {
     try {
       doc.image(LOGO_PATH, area.left, headerY, {
@@ -270,15 +323,12 @@ const drawHeader = (doc, guest, documentRef) => {
     }
   }
 
-  const metaBoxWidth = 170;
-  const leftWidth = area.contentWidth - metaBoxWidth - 20;
-
   // Hotel name
   doc
     .font(CONFIG.fonts.bold)
     .fontSize(CONFIG.fontSizes.hotelName)
     .fillColor(CONFIG.colors.brand)
-    .text(hotelName, infoX, headerY, { width: leftWidth, lineBreak: false });
+    .text(hotelName, infoX, headerY, { width: leftWidth - (infoX - area.left), lineBreak: false });
 
   // "Checkout Receipt" subtitle
   doc
@@ -297,47 +347,8 @@ const drawHeader = (doc, guest, documentRef) => {
       .text(contactParts.join('  |  '), infoX, headerY + 38, { width: leftWidth });
   }
 
-  // ── Right side: Meta info box ──
-  const metaX = area.right - metaBoxWidth;
-  const metaY = headerY;
-  const metaHeight = 68;
-
-  doc
-    .roundedRect(metaX, metaY, metaBoxWidth, metaHeight, 6)
-    .lineWidth(0.8)
-    .strokeColor(CONFIG.colors.border)
-    .stroke();
-
-  const metaRows = [
-    { label: 'Reference', value: documentRef },
-    { label: 'Customer ID', value: safeText(guest?.customerId) },
-    { label: 'Generated', value: formatDateTime(new Date()) },
-    { label: 'Status', value: safeText(guest?.status, 'Checked-Out') },
-  ];
-
-  let rowY = metaY + 6;
-  metaRows.forEach((row) => {
-    doc
-      .font(CONFIG.fonts.bold)
-      .fontSize(7)
-      .fillColor(CONFIG.colors.textMuted)
-      .text(`${row.label}:`, metaX + 8, rowY, { width: 56, lineBreak: false });
-
-    doc
-      .font(CONFIG.fonts.normal)
-      .fontSize(7.5)
-      .fillColor(CONFIG.colors.textPrimary)
-      .text(safeText(row.value), metaX + 64, rowY, {
-        width: metaBoxWidth - 72,
-        align: 'right',
-        lineBreak: false,
-      });
-
-    rowY += 15;
-  });
-
   // ── Separator line ──
-  const sepY = headerY + 58;
+  const sepY = Math.max(headerY + 56, metaY + metaBoxHeight + 6);
   doc
     .moveTo(area.left, sepY)
     .lineTo(area.right, sepY)
@@ -460,10 +471,11 @@ const drawAccompanyingGuestSection = (doc, guest) => {
     2
   );
 
-  // Build table rows
+  // Build table rows — defensive: convert Mongoose sub-docs to plain objects
+  const toPlain = (obj) => (typeof obj?.toObject === 'function' ? obj.toObject() : obj);
   const allGuests = [
-    ...adults.map((g) => ({ ...g, type: 'Adult' })),
-    ...children.map((g) => ({ ...g, type: 'Child' })),
+    ...adults.map((g) => ({ ...toPlain(g), type: 'Adult' })),
+    ...children.map((g) => ({ ...toPlain(g), type: 'Child' })),
   ];
 
   if (allGuests.length === 0) return;
@@ -523,6 +535,10 @@ const drawAccompanyingGuestSection = (doc, guest) => {
   // ── Draw table rows ──
   allGuests.forEach((g, index) => {
     ensureSpace(doc, rowHeight + 4);
+    // After a page break, reset tableY to current position
+    if (doc.y < tableY) {
+      tableY = doc.y;
+    }
 
     // Stripe alternating rows
     if (index % 2 === 0) {
