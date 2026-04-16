@@ -17,7 +17,7 @@ const { generateGuestReportCSV } = require('../utils/report-generator');
 const { sendCheckoutEmail } = require('../utils/send-email');
 const ApiError = require('../utils/api-error');
 const ApiResponse = require('../utils/api-response');
-const { uploadToCloudinary } = require('../utils/cloudinary');
+const { uploadToCloudinary, generateSignedUrl } = require('../utils/cloudinary');
 const { getIO } = require('../config/socket');
 
 // ============================================================
@@ -601,18 +601,22 @@ const checkoutGuest = asyncHandler(async (req, res) => {
   res.status(200).json(new ApiResponse(200, null, 'Guest checked out successfully'));
 
   // STEP 5: OPTIMIZATION: Generate PDF and send email asynchronously
+  // CRITICAL: Convert to plain object so Mongoose sub-documents (accompanying guests)
+  // spread correctly inside the PDF generator.
+  const guestPlain = guest.toObject();
+
   setImmediate(() => {
-    generateGuestPDF(guest)
+    generateGuestPDF(guestPlain)
       .then((pdfBuffer) => {
         return sendCheckoutEmail(
-          guest.primaryGuest.email,
-          guest.hotel.email,
-          guest.toObject(),
+          guestPlain.primaryGuest.email,
+          guestPlain.hotel.email,
+          guestPlain,
           pdfBuffer
         );
       })
       .then(() => {
-        logger.info(`Checkout email sent to ${guest.primaryGuest.email}`);
+        logger.info(`Checkout email sent to ${guestPlain.primaryGuest.email}`);
       })
       .catch((error) => {
         logger.error(`Checkout email/PDF failed: ${error.message}`);
@@ -620,6 +624,55 @@ const checkoutGuest = asyncHandler(async (req, res) => {
   });
 
   logger.info(`Guest checked out: ${guest.customerId}`);
+});
+
+/**
+ * Get a single guest by ID with full details
+ * @desc Retrieve complete guest data including accompanying guests and signed image URLs
+ * @route GET /api/guests/:id
+ * @access Private (Hotel staff only)
+ */
+const getGuestById = asyncHandler(async (req, res) => {
+  const guestId = req.params.id;
+  const hotelUserId = req.user._id;
+
+  const guest = await Guest.findOne({ _id: guestId, hotel: hotelUserId }).lean();
+
+  if (!guest) {
+    throw new ApiError(404, 'Guest not found');
+  }
+
+  // Generate signed URLs for primary guest images
+  const signImage = (field) => {
+    if (!field || !field.public_id) return field;
+    try {
+      return { ...field, signedUrl: generateSignedUrl(field.public_id) };
+    } catch {
+      return field;
+    }
+  };
+
+  guest.livePhoto = signImage(guest.livePhoto);
+  guest.idImageFront = signImage(guest.idImageFront);
+  guest.idImageBack = signImage(guest.idImageBack);
+
+  // Sign accompanying guest images
+  const signGuestImages = (guestArr) => {
+    if (!Array.isArray(guestArr)) return [];
+    return guestArr.map((g) => ({
+      ...g,
+      livePhoto: signImage(g.livePhoto),
+      idImageFront: signImage(g.idImageFront),
+      idImageBack: signImage(g.idImageBack),
+    }));
+  };
+
+  if (guest.accompanyingGuests) {
+    guest.accompanyingGuests.adults = signGuestImages(guest.accompanyingGuests.adults);
+    guest.accompanyingGuests.children = signGuestImages(guest.accompanyingGuests.children);
+  }
+
+  res.status(200).json(new ApiResponse(200, guest, 'Guest details retrieved successfully'));
 });
 
 /**
@@ -666,5 +719,6 @@ module.exports = {
   getAllGuests,
   getTodaysGuests,
   checkoutGuest,
+  getGuestById,
   generateGuestReport,
 };
