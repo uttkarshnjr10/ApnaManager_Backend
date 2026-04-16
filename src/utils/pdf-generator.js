@@ -677,7 +677,34 @@ const loadReceiptImages = async (guest) => {
     loadImageBuffer(guest?.idImageBack, 'ID back'),
   ]);
 
-  return { livePhoto, idImageFront, idImageBack };
+  const loadAccImages = async (guests) => {
+    if (!guests || !Array.isArray(guests)) return [];
+    return Promise.all(
+      guests.map(async (accGuest) => {
+        const [accLivePhoto, accIdImageFront, accIdImageBack] = await Promise.all([
+          loadImageBuffer(accGuest.livePhoto, `Accompanying guest ${accGuest.name} live photo`),
+          loadImageBuffer(accGuest.idImageFront, `Accompanying guest ${accGuest.name} ID front`),
+          loadImageBuffer(accGuest.idImageBack, `Accompanying guest ${accGuest.name} ID back`),
+        ]);
+        return {
+          name: accGuest.name,
+          images: {
+            livePhoto: accLivePhoto,
+            idImageFront: accIdImageFront,
+            idImageBack: accIdImageBack,
+          }
+        };
+      })
+    );
+  };
+
+  const accompanyingAdults = await loadAccImages(guest?.accompanyingGuests?.adults);
+  const accompanyingChildren = await loadAccImages(guest?.accompanyingGuests?.children);
+
+  return { 
+    livePhoto, idImageFront, idImageBack,
+    accompanyingGuests: [...accompanyingAdults, ...accompanyingChildren]
+  };
 };
 
 // ============================================================
@@ -754,7 +781,15 @@ const drawImageSection = (doc, images) => {
   const gap = 10;
   const cardWidth = (area.contentWidth - gap * 2) / 3;
   const cardHeight = 180;
-  const startY = doc.y;
+  let startY = doc.y;
+
+  // Primary Guest Text
+  doc
+    .font(CONFIG.fonts.bold)
+    .fontSize(CONFIG.fontSizes.body)
+    .fillColor(CONFIG.colors.textPrimary)
+    .text('Primary Guest', area.left, startY);
+  startY += 18;
 
   drawImageCard(doc, {
     x: area.left,
@@ -783,7 +818,54 @@ const drawImageSection = (doc, images) => {
     imageBuffer: images.idImageBack,
   });
 
-  doc.y = startY + cardHeight + 12;
+  doc.y = startY + cardHeight + 16;
+
+  // Accompanying Guest Images
+  const accGuests = images.accompanyingGuests || [];
+  accGuests.forEach((accp) => {
+    // Check if any of the three images exist
+    const hasAnyImage = accp.images.livePhoto || accp.images.idImageFront || accp.images.idImageBack;
+    if (!hasAnyImage) return;
+
+    ensureSpace(doc, 215);
+    startY = doc.y;
+
+    doc
+      .font(CONFIG.fonts.bold)
+      .fontSize(CONFIG.fontSizes.body)
+      .fillColor(CONFIG.colors.textPrimary)
+      .text(`Accompanying Guest: ${safeText(accp.name)}`, area.left, startY);
+    startY += 18;
+
+    drawImageCard(doc, {
+      x: area.left,
+      y: startY,
+      width: cardWidth,
+      height: cardHeight,
+      title: 'Live Photo',
+      imageBuffer: accp.images.livePhoto,
+    });
+
+    drawImageCard(doc, {
+      x: area.left + cardWidth + gap,
+      y: startY,
+      width: cardWidth,
+      height: cardHeight,
+      title: 'ID Front',
+      imageBuffer: accp.images.idImageFront,
+    });
+
+    drawImageCard(doc, {
+      x: area.left + (cardWidth + gap) * 2,
+      y: startY,
+      width: cardWidth,
+      height: cardHeight,
+      title: 'ID Back',
+      imageBuffer: accp.images.idImageBack,
+    });
+
+    doc.y = startY + cardHeight + 16;
+  });
 };
 
 // ============================================================
