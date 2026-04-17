@@ -84,11 +84,79 @@ const buildPaginationMeta = (totalDocs, page, limit) => ({
 /** Reusable projection for Hotel populates across handlers. */
 const HOTEL_PROJECTION = 'username hotelName city address state';
 
-/** Map of allowed searchBy values to their Guest model field paths. */
-const SEARCH_FIELD_MAP = {
-  name: 'primaryGuest.name',
-  phone: 'primaryGuest.phone',
-  id: 'idNumber',
+/**
+ * Build a MongoDB filter for unified search across primary + accompanying guests.
+ * Returns a filter object that uses $or to cover all relevant fields.
+ *
+ * @param {string} searchBy - 'name' | 'phone' | 'id'
+ * @param {string} query - The search term (already regex-escaped by caller)
+ * @returns {Object} MongoDB filter
+ */
+const buildUnifiedSearchFilter = (searchBy, escapedQuery) => {
+  const regexOpts = { $regex: escapedQuery, $options: 'i' };
+
+  switch (searchBy) {
+    case 'name':
+      return {
+        $or: [
+          { 'primaryGuest.name': regexOpts },
+          { 'accompanyingGuests.adults.name': regexOpts },
+          { 'accompanyingGuests.children.name': regexOpts },
+        ],
+      };
+    case 'phone':
+      // Only primary guests have phone numbers in the schema
+      return { 'primaryGuest.phone': regexOpts };
+    case 'id':
+      return {
+        $or: [
+          { idNumber: regexOpts },
+          { 'accompanyingGuests.adults.idNumber': regexOpts },
+          { 'accompanyingGuests.children.idNumber': regexOpts },
+        ],
+      };
+    default:
+      return null;
+  }
+};
+
+/**
+ * Identify who in the booking matched the search query.
+ * Returns { matchRole, matchedPersonName } for display in search results.
+ *
+ * @param {Object} guest - Lean guest document
+ * @param {string} searchBy - 'name' | 'phone' | 'id'
+ * @param {RegExp} queryRegex - The compiled search regex
+ * @returns {{ matchRole: string, matchedPersonName: string|null }}
+ */
+const identifyMatchRole = (guest, searchBy, queryRegex) => {
+  // Check primary guest first
+  if (searchBy === 'name' && queryRegex.test(guest.primaryGuest?.name)) {
+    return { matchRole: 'Primary Guest', matchedPersonName: null };
+  }
+  if (searchBy === 'phone' && queryRegex.test(guest.primaryGuest?.phone)) {
+    return { matchRole: 'Primary Guest', matchedPersonName: null };
+  }
+  if (searchBy === 'id' && queryRegex.test(guest.idNumber)) {
+    return { matchRole: 'Primary Guest', matchedPersonName: null };
+  }
+
+  // Check accompanying guests
+  const allAccompanying = [
+    ...(guest.accompanyingGuests?.adults || []),
+    ...(guest.accompanyingGuests?.children || []),
+  ];
+
+  for (const acc of allAccompanying) {
+    if (searchBy === 'name' && queryRegex.test(acc.name)) {
+      return { matchRole: 'Accompanying Guest', matchedPersonName: acc.name };
+    }
+    if (searchBy === 'id' && queryRegex.test(acc.idNumber)) {
+      return { matchRole: 'Accompanying Guest', matchedPersonName: acc.name };
+    }
+  }
+
+  return { matchRole: 'Primary Guest', matchedPersonName: null };
 };
 
 // ============================================================
@@ -97,9 +165,10 @@ const SEARCH_FIELD_MAP = {
 
 /**
  * Search guest records by name, phone, or ID number.
+ * Searches across ALL persons in a booking (primary + accompanying).
  * Creates a non-blocking audit log for every search attempt.
  *
- * @desc    Search guest records
+ * @desc    Unified guest search
  * @route   POST /api/police/search
  * @access  Private/Police
  */
@@ -110,13 +179,14 @@ const searchGuests = asyncHandler(async (req, res) => {
     throw new ApiError(400, 'Search query, type (searchBy), and reason are required');
   }
 
-  const fieldPath = SEARCH_FIELD_MAP[searchBy];
-  if (!fieldPath) {
+  const validSearchTypes = ['name', 'phone', 'id'];
+  if (!validSearchTypes.includes(searchBy)) {
     throw new ApiError(400, "Invalid searchBy value. Use 'name', 'phone', or 'id'");
   }
 
   const { page, limit, skip } = parsePagination(req.body.page, req.body.limit);
-  const filter = { [fieldPath]: { $regex: escapeRegex(query), $options: 'i' } };
+  const escaped = escapeRegex(query);
+  const filter = buildUnifiedSearchFilter(searchBy, escaped);
 
   // Fire-and-forget audit log — never blocks the response
   createAuditLog({
@@ -138,14 +208,21 @@ const searchGuests = asyncHandler(async (req, res) => {
       .lean(),
   ]);
 
-  const guestsWithSignedUrls = guests.map((g) => ({
-    ...g,
-    livePhotoURL: g.livePhoto?.public_id ? generateSignedUrl(g.livePhoto.public_id) : null,
-  }));
+  // Post-process: add match role and signed URLs
+  const queryRegex = new RegExp(escaped, 'i');
+  const enrichedGuests = guests.map((g) => {
+    const { matchRole, matchedPersonName } = identifyMatchRole(g, searchBy, queryRegex);
+    return {
+      ...g,
+      livePhotoURL: g.livePhoto?.public_id ? generateSignedUrl(g.livePhoto.public_id) : null,
+      matchRole,
+      matchedPersonName,
+    };
+  });
 
   res.status(200).json(
     new ApiResponse(200, {
-      guests: guestsWithSignedUrls,
+      guests: enrichedGuests,
       pagination: buildPaginationMeta(totalDocs, page, limit),
     })
   );
