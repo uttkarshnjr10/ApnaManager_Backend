@@ -31,7 +31,7 @@ const alertSchema = new mongoose.Schema(
     // (useful when the match is an accompanying guest, not the primary)
     matchedPerson: {
       name: { type: String },
-      identifier: { type: String },       // The ID number or phone that matched
+      identifier: { type: String }, // The ID number or phone that matched
       role: { type: String, enum: ['Primary', 'Accompanying'] },
     },
   },

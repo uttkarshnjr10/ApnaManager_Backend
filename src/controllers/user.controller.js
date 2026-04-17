@@ -33,6 +33,26 @@ const USER_MODELS = {
 };
 
 /**
+ * Editable profile fields by role (excluding email, handled separately)
+ * Restricting updates prevents privilege/identity-sensitive changes.
+ */
+const PROFILE_EDITABLE_FIELDS = {
+  Hotel: [
+    'ownerName',
+    'phone',
+    'address',
+    'city',
+    'state',
+    'pinCode',
+    'postOffice',
+    'localThana',
+    'pinLocation',
+  ],
+  Police: [],
+  'Regional Admin': [],
+};
+
+/**
  * Checks if an email exists in any user collection
  * @param {string} email - Email address to check
  * @returns {Promise<Object|null>} User object if found, null otherwise
@@ -116,6 +136,23 @@ const getTopItems = (items, limit = 3) => {
     .sort((a, b) => b[1] - a[1])
     .slice(0, limit)
     .map(([item]) => item);
+};
+
+/**
+ * Picks only fields that are explicitly allowed.
+ * @param {Object} source - Incoming object
+ * @param {string[]} allowedFields - Whitelisted keys
+ * @returns {Object} Filtered object
+ */
+const pickAllowedFields = (source, allowedFields) => {
+  if (!source || typeof source !== 'object') return {};
+
+  return allowedFields.reduce((acc, key) => {
+    if (Object.prototype.hasOwnProperty.call(source, key)) {
+      acc[key] = source[key];
+    }
+    return acc;
+  }, {});
 };
 
 // ============================================================
@@ -258,21 +295,28 @@ const updateUserProfile = asyncHandler(async (req, res) => {
   }
 
   // Update email if provided
-  if (req.body.email) {
+  if (typeof req.body.email === 'string') {
+    const nextEmail = req.body.email.trim().toLowerCase();
+    if (!nextEmail) {
+      throw new ApiError(400, 'Email cannot be empty');
+    }
+
     // Check if new email already exists
-    const existingUser = await checkEmailExists(req.body.email);
+    const existingUser = await checkEmailExists(nextEmail);
     if (existingUser && existingUser._id.toString() !== userId.toString()) {
       throw new ApiError(400, 'Email already in use by another account');
     }
-    user.email = req.body.email;
+    user.email = nextEmail;
   }
 
-  // Update role-specific details
-  if (req.body.details) {
-    Object.keys(req.body.details).forEach((key) => {
-      user[key] = req.body.details[key];
-    });
-  }
+  // Update role-specific details using allowlist only
+  const allowedFields = PROFILE_EDITABLE_FIELDS[role] || [];
+  const safeDetails = pickAllowedFields(req.body.details, allowedFields);
+
+  Object.keys(safeDetails).forEach((key) => {
+    const value = safeDetails[key];
+    user[key] = typeof value === 'string' ? value.trim() : value;
+  });
 
   const updatedUser = await user.save();
 
