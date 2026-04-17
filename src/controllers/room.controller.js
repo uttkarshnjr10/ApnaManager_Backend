@@ -104,17 +104,22 @@ const getRoomDashboardStats = asyncHandler(async (req, res) => {
   }
 
   const total = hotel.rooms.length;
-  const occupied = hotel.rooms.filter((r) => r.status === 'Occupied').length;
-  const vacant = total - occupied;
+  const occupiedRooms = hotel.rooms
+    .filter((r) => r.status === 'Occupied')
+    .map((r) => r.roomNumber)
+    .sort();
   const vacantRooms = hotel.rooms
     .filter((r) => r.status === 'Vacant')
     .map((r) => r.roomNumber)
     .sort();
+  const occupied = occupiedRooms.length;
+  const vacant = vacantRooms.length;
 
   const stats = {
     total,
     occupied,
     vacant,
+    occupiedRooms,
     vacantRooms,
   };
 
