@@ -97,6 +97,13 @@ const guestSchema = new mongoose.Schema({
     type: Date,
     default: Date.now,
   },
+
+  // ── Unified search fields (auto-populated by pre-save hook) ──
+  // These fields aggregate identifiers from the primary guest AND all
+  // accompanying guests so that a single indexed query can find a booking
+  // regardless of which person inside it matches.
+  allIdNumbers: [{ type: String, trim: true }],
+  allNames: [{ type: String, trim: true }],
 });
 
 // ============================================================
@@ -123,6 +130,10 @@ guestSchema.index({ 'primaryGuest.phone': 1 });
 // Index for customerId lookups
 guestSchema.index({ customerId: 1 });
 
+// Unified search indexes — enables fast $in and regex lookups across all persons
+guestSchema.index({ allIdNumbers: 1 });
+guestSchema.index({ allNames: 1 });
+
 // ============================================================
 // MIDDLEWARE
 // ============================================================
@@ -134,5 +145,45 @@ guestSchema.pre('validate', function (next) {
   next();
 });
 
+/**
+ * Pre-save hook: Auto-populate unified search arrays.
+ * Runs on every save so that allIdNumbers/allNames always stay in sync
+ * with the primary guest and accompanying guest sub-documents.
+ */
+guestSchema.pre('save', function (next) {
+  // ── Collect all ID numbers ──
+  const ids = new Set();
+  if (this.idNumber) ids.add(this.idNumber.trim());
+
+  const addIdsFrom = (arr) => {
+    if (!Array.isArray(arr)) return;
+    arr.forEach((g) => {
+      if (g.idNumber) ids.add(g.idNumber.trim());
+    });
+  };
+  addIdsFrom(this.accompanyingGuests?.adults);
+  addIdsFrom(this.accompanyingGuests?.children);
+
+  this.allIdNumbers = [...ids];
+
+  // ── Collect all names ──
+  const names = new Set();
+  if (this.primaryGuest?.name) names.add(this.primaryGuest.name.trim());
+
+  const addNamesFrom = (arr) => {
+    if (!Array.isArray(arr)) return;
+    arr.forEach((g) => {
+      if (g.name) names.add(g.name.trim());
+    });
+  };
+  addNamesFrom(this.accompanyingGuests?.adults);
+  addNamesFrom(this.accompanyingGuests?.children);
+
+  this.allNames = [...names];
+
+  next();
+});
+
 const Guest = mongoose.model('Guest', guestSchema);
 module.exports = Guest;
+

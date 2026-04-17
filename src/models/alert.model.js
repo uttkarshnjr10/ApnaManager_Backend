@@ -27,6 +27,13 @@ const alertSchema = new mongoose.Schema(
       required: true,
       enum: ['Police', 'RegionalAdmin', 'System'], // Must match Mongoose model names for refPath
     },
+    // Optional: Identifies the exact person who triggered the alert
+    // (useful when the match is an accompanying guest, not the primary)
+    matchedPerson: {
+      name: { type: String },
+      identifier: { type: String },       // The ID number or phone that matched
+      role: { type: String, enum: ['Primary', 'Accompanying'] },
+    },
   },
   { timestamps: true }
 );
