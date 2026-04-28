@@ -6,12 +6,13 @@ const Hotel = require('../models/hotel.model');
 const Alert = require('../models/alert.model');
 const Remark = require('../models/remark.model');
 const CaseReport = require('../models/case-report.model');
+const PoliceSession = require('../models/police-session.model');
 
 const asyncHandler = require('../utils/async-handler');
 const logger = require('../utils/logger');
 const ApiError = require('../utils/api-error');
 const ApiResponse = require('../utils/api-response');
-const { generateSignedUrl } = require('../utils/cloudinary');
+const { generateSignedUrl, uploadToCloudinary } = require('../utils/cloudinary');
 
 // ============================================================
 // PRIVATE HELPERS (DRY)
@@ -571,6 +572,85 @@ const advancedGuestSearch = asyncHandler(async (req, res) => {
   );
 });
 
+// ============================================================
+// SESSION VERIFICATION
+// ============================================================
+
+/** Default session duration: 30 minutes */
+const SESSION_DURATION_MS = 30 * 60 * 1000;
+
+/**
+ * Create a verification session by uploading a live photo.
+ * The officer must capture a photo via the device camera — no gallery uploads.
+ * The photo is stored in Cloudinary for audit, and a 30-minute session is created.
+ *
+ * @desc    Create police verification session
+ * @route   POST /api/police/verify-session
+ * @access  Private/Police
+ */
+const verifySession = asyncHandler(async (req, res) => {
+  if (!req.file) {
+    throw new ApiError(400, 'Verification photo is required. Please capture a live photo.');
+  }
+
+  // Upload to Cloudinary in a dedicated folder for audit separation
+  const uploadResult = await uploadToCloudinary(req.file, 'police-verification');
+
+  const now = new Date();
+  const expiresAt = new Date(now.getTime() + SESSION_DURATION_MS);
+
+  const session = await PoliceSession.create({
+    officer: req.user._id,
+    photo: {
+      url: uploadResult.url,
+      public_id: uploadResult.public_id,
+    },
+    verifiedAt: now,
+    expiresAt,
+    ipAddress: req.ip || req.connection?.remoteAddress || 'unknown',
+    userAgent: req.headers['user-agent'] || 'unknown',
+  });
+
+  logger.info(
+    `Police session created for officer ${req.user.username} (ID: ${req.user._id}), expires at ${expiresAt.toISOString()}`
+  );
+
+  res.status(201).json(
+    new ApiResponse(201, {
+      sessionId: session._id,
+      verified: true,
+      verifiedAt: session.verifiedAt,
+      expiresAt: session.expiresAt,
+    }, 'Verification successful. Session active.')
+  );
+});
+
+/**
+ * Check whether the current officer has an active verification session.
+ * Used by the frontend to decide whether to show the webcam gate.
+ *
+ * @desc    Get police session status
+ * @route   GET /api/police/session-status
+ * @access  Private/Police
+ */
+const getSessionStatus = asyncHandler(async (req, res) => {
+  const session = await PoliceSession.findOne({
+    officer: req.user._id,
+    expiresAt: { $gt: new Date() },
+  })
+    .sort({ expiresAt: -1 })
+    .select('verifiedAt expiresAt')
+    .lean();
+
+  res.status(200).json(
+    new ApiResponse(200, {
+      verified: !!session,
+      verifiedAt: session?.verifiedAt || null,
+      expiresAt: session?.expiresAt || null,
+    })
+  );
+});
+
 module.exports = {
   searchGuests,
   getDashboardData,
@@ -583,4 +663,6 @@ module.exports = {
   getCaseReports,
   getHotelList,
   advancedGuestSearch,
+  verifySession,
+  getSessionStatus,
 };
