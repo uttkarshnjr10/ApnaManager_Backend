@@ -576,8 +576,8 @@ const advancedGuestSearch = asyncHandler(async (req, res) => {
 // SESSION VERIFICATION
 // ============================================================
 
-/** Default session duration: 30 minutes */
-const SESSION_DURATION_MS = 30 * 60 * 1000;
+/** Default session duration: 10 minutes */
+const SESSION_DURATION_MS = 10 * 60 * 1000;
 
 /**
  * Create a verification session by uploading a live photo.
