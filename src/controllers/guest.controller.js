@@ -213,20 +213,47 @@ const validateRoomAvailability = (hotel, roomNumber) => {
 };
 
 /**
- * Update room status to occupied
- * @param {Object} hotel - Hotel document
- * @param {string} roomNumber - Room number to update
+ * Atomically claim a room as Occupied.
+ * Uses findOneAndUpdate with a query targeting status: 'Vacant' to prevent
+ * TOCTOU race conditions when concurrent requests target the same room.
+ *
+ * @param {string} hotelId - Hotel document ID
+ * @param {string} roomNumber - Room number to claim
  * @param {string} guestId - Guest ID to assign
  * @returns {Promise<Object>} Updated hotel document
+ * @throws {ApiError} If room doesn't exist, is already occupied, or hotel not found
  */
-const updateRoomStatus = async (hotel, roomNumber, guestId) => {
-  const room = hotel.rooms.find((r) => r.roomNumber === roomNumber);
-  if (room) {
-    room.status = 'Occupied';
-    room.guestId = guestId;
-    await hotel.save();
+const claimRoomAtomically = async (hotelId, roomNumber, guestId) => {
+  if (!roomNumber) {
+    throw new ApiError(400, 'Room number is required');
   }
-  return hotel;
+
+  const updatedHotel = await Hotel.findOneAndUpdate(
+    {
+      _id: hotelId,
+      'rooms.roomNumber': roomNumber,
+      'rooms.status': 'Vacant',
+    },
+    {
+      $set: {
+        'rooms.$.status': 'Occupied',
+        'rooms.$.guestId': guestId,
+      },
+    },
+    { new: true }
+  );
+
+  if (!updatedHotel) {
+    // Determine the specific error: room doesn't exist vs already occupied
+    const hotel = await Hotel.findById(hotelId).select('rooms').lean();
+    if (!hotel) throw new ApiError(404, 'Hotel not found');
+
+    const room = hotel.rooms.find((r) => r.roomNumber === roomNumber);
+    if (!room) throw new ApiError(404, `Room "${roomNumber}" does not exist`);
+    throw new ApiError(400, `Room "${roomNumber}" is already occupied`);
+  }
+
+  return updatedHotel;
 };
 
 /**
@@ -503,14 +530,11 @@ const registerGuest = asyncHandler(async (req, res) => {
   const primaryGuestData = buildPrimaryGuestData(req.body);
   const stayDetailsData = buildStayDetails(req.body);
 
-  // STEP 4: Validate room availability (throws if invalid)
-  validateRoomAvailability(hotel, stayDetailsData.roomNumber);
-
-  // STEP 5: Process accompanying guests
+  // STEP 4: Process accompanying guests
   const accompanyingGuestsRaw = parseMaybeJson(req.body.accompanyingGuests, []);
   const accompanyingGuests = processAccompanyingGuests(accompanyingGuestsRaw, filesMap);
 
-  // STEP 6: Create guest document
+  // STEP 5: Create guest document
   const guest = await Guest.create({
     primaryGuest: primaryGuestData,
     idType: req.body.idType,
@@ -523,8 +547,8 @@ const registerGuest = asyncHandler(async (req, res) => {
     hotel: hotelUserId,
   });
 
-  // STEP 7: Update room status
-  await updateRoomStatus(hotel, stayDetailsData.roomNumber, guest._id);
+  // STEP 6: Atomically claim the room (prevents TOCTOU double-booking race condition)
+  await claimRoomAtomically(hotelUserId, stayDetailsData.roomNumber, guest._id);
 
   // STEP 8: Send immediate response to user (don't wait for watchlist check)
   res.status(201).json(new ApiResponse(201, guest, 'Guest registered successfully'));
@@ -627,6 +651,11 @@ const checkoutGuest = asyncHandler(async (req, res) => {
     throw new ApiError(404, 'Guest not found');
   }
 
+  // SECURITY: Verify the authenticated hotel owns this guest (prevents IDOR)
+  if (guest.hotel._id.toString() !== req.user._id.toString()) {
+    throw new ApiError(403, 'You are not authorized to checkout this guest');
+  }
+
   if (guest.status === 'Checked-Out') {
     throw new ApiError(400, 'This guest has already been checked out');
   }
@@ -636,27 +665,16 @@ const checkoutGuest = asyncHandler(async (req, res) => {
   guest.stayDetails.checkOut = new Date();
   await guest.save();
 
-  // STEP 2: Vacate room (run in background to not block response)
+  // STEP 2: Vacate room (synchronous — must complete before response to prevent orphaned rooms)
   if (guest.hotel && guest.hotel.rooms) {
-    // Don't await - run asynchronously
-    setImmediate(() => {
-      Hotel.findById(guest.hotel._id)
-        .then((hotel) => {
-          if (hotel) {
-            const roomIndex = hotel.rooms.findIndex(
-              (r) => r.roomNumber === guest.stayDetails.roomNumber
-            );
-            if (roomIndex !== -1) {
-              hotel.rooms[roomIndex].status = 'Vacant';
-              hotel.rooms[roomIndex].guestId = null;
-              return hotel.save();
-            }
-          }
-        })
-        .catch((error) => {
-          logger.error(`Failed to vacate room: ${error.message}`);
-        });
-    });
+    const roomIndex = guest.hotel.rooms.findIndex(
+      (r) => r.roomNumber === guest.stayDetails.roomNumber
+    );
+    if (roomIndex !== -1) {
+      guest.hotel.rooms[roomIndex].status = 'Vacant';
+      guest.hotel.rooms[roomIndex].guestId = null;
+      await guest.hotel.save();
+    }
   }
 
   // STEP 3: Create access log (non-blocking)
@@ -669,7 +687,7 @@ const checkoutGuest = asyncHandler(async (req, res) => {
     logger.error(`Failed to create access log: ${error.message}`);
   });
 
-  // STEP 4: Send response immediately (don't wait for email)
+  // STEP 4: Send response
   res.status(200).json(new ApiResponse(200, null, 'Guest checked out successfully'));
 
   // STEP 5: OPTIMIZATION: Generate PDF and send email asynchronously

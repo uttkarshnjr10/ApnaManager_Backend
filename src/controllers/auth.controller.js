@@ -181,13 +181,12 @@ const loginUser = asyncHandler(async (req, res) => {
   // Set cookie
   res.cookie('jwt', token, cookieOptions);
 
-  // Prepare response data
+  // Prepare response data (token is NOT included — it's in the httpOnly cookie only)
   const userData = {
     _id: user._id,
     username: user.username,
     email: user.email,
     role: role,
-    token: token, // Also send in response for localStorage fallback
   };
 
   logger.info(`Successful login: ${role} - ${user.email} (Type: ${loginType || 'Auto'})`);
