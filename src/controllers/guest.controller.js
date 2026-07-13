@@ -534,6 +534,26 @@ const registerGuest = asyncHandler(async (req, res) => {
   const accompanyingGuestsRaw = parseMaybeJson(req.body.accompanyingGuests, []);
   const accompanyingGuests = processAccompanyingGuests(accompanyingGuestsRaw, filesMap);
 
+  // STEP 4.5: Parse and validate DPDP consent record
+  const consentRecordRaw = parseMaybeJson(req.body.consentRecord, null);
+  if (
+    !consentRecordRaw ||
+    !consentRecordRaw.consentGranted ||
+    !consentRecordRaw.signatureImage ||
+    !consentRecordRaw.consentHash ||
+    !consentRecordRaw.signedAt
+  ) {
+    throw new ApiError(400, 'Valid guest consent record with signature is required under DPDP Act 2023');
+  }
+
+  const consentRecord = {
+    signatureImage: consentRecordRaw.signatureImage,
+    consentTextVersion: consentRecordRaw.consentTextVersion,
+    consentHash: consentRecordRaw.consentHash,
+    signedAt: new Date(consentRecordRaw.signedAt),
+    consentGranted: true,
+  };
+
   // STEP 5: Create guest document
   const guest = await Guest.create({
     primaryGuest: primaryGuestData,
@@ -545,6 +565,7 @@ const registerGuest = asyncHandler(async (req, res) => {
     accompanyingGuests,
     stayDetails: stayDetailsData,
     hotel: hotelUserId,
+    consentRecord,
   });
 
   // STEP 6: Atomically claim the room (prevents TOCTOU double-booking race condition)

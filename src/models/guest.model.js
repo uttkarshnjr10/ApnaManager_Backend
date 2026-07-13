@@ -88,6 +88,16 @@ const guestSchema = new mongoose.Schema({
     ref: 'Hotel',
     required: true,
   },
+
+  // ── DPDP Act 2023 Consent Record ──────────────────────────────
+  consentRecord: {
+    signatureImage: { type: String },               // base64 PNG of the trimmed signature
+    consentTextVersion: { type: String },            // version identifier of the shown consent text
+    consentHash: { type: String },                   // SHA-256 hex of (consentTextVersion + timestamp)
+    signedAt: { type: Date },                        // ISO timestamp of signature capture
+    consentGranted: { type: Boolean, default: false },
+  },
+
   status: {
     type: String,
     enum: ['Checked-In', 'Checked-Out'],
