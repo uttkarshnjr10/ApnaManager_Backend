@@ -27,6 +27,7 @@ const individualGuestSchema = new mongoose.Schema(
       state: { type: String, trim: true },
       zipCode: { type: String, trim: true },
     },
+    nationality: { type: String, trim: true, default: 'Indian' },
   },
   { _id: false }
 );
@@ -98,6 +99,20 @@ const guestSchema = new mongoose.Schema({
     consentGranted: { type: Boolean, default: false },
   },
 
+  // ── C-Form Status for Foreign Nationals ──────────────────────────────
+  cForm: {
+    status: { 
+      type: String, 
+      enum: ['not_required', 'pending', 'generated', 'submitted', 'failed'],
+      default: 'not_required'
+    },
+    pdfUrl: { type: String },
+    pdfPublicId: { type: String },
+    generatedAt: { type: Date },
+    submittedAt: { type: Date },
+    submittedBy: { type: String }
+  },
+
   status: {
     type: String,
     enum: ['Checked-In', 'Checked-Out'],
@@ -151,6 +166,14 @@ guestSchema.index({ allNames: 1 });
 guestSchema.pre('validate', function (next) {
   if (this.isNew) {
     this.customerId = `G-${randomBytes(3).toString('hex').toUpperCase()}`;
+    
+    // Automatically flag foreign nationals for C-Form generation
+    if (
+      this.primaryGuest?.nationality && 
+      this.primaryGuest.nationality.trim().toLowerCase() !== 'indian'
+    ) {
+      this.cForm = { status: 'pending' };
+    }
   }
   next();
 });

@@ -11,6 +11,8 @@ const RegionalAdmin = require('../models/regional-admin.model');
 const asyncHandler = require('express-async-handler');
 const logger = require('../utils/logger');
 const generateGuestPDF = require('../utils/pdf-generator');
+const { generateCForm } = require('../utils/cformGenerator');
+const { uploadBufferToCloudinary } = require('../utils/uploadBuffer');
 const { generateGuestReportCSV } = require('../utils/report-generator');
 const { sendCheckoutEmail } = require('../utils/send-email');
 const ApiError = require('../utils/api-error');
@@ -477,6 +479,42 @@ const triggerWatchlistCheck = (guest, hotel) => {
   });
 };
 
+/**
+ * Generates and stores C-Form for foreign nationals in the background.
+ * @param {Object} guest - Guest document
+ * @param {Object} hotel - Hotel document
+ */
+const generateAndStoreCForm = async (guest, hotel) => {
+  const nationality = guest.primaryGuest?.nationality?.trim().toLowerCase();
+  
+  if (!nationality || nationality === 'indian') {
+    return;
+  }
+
+  try {
+    const pdfBuffer = await generateCForm(guest, hotel);
+    const filename = `cform_${guest.customerId}_${Date.now()}`;
+    
+    const result = await uploadBufferToCloudinary(pdfBuffer, filename, 'cforms');
+    
+    await Guest.findByIdAndUpdate(guest._id, {
+      cForm: {
+        status: 'generated',
+        pdfUrl: result.url,
+        pdfPublicId: result.public_id,
+        generatedAt: new Date(),
+      }
+    });
+
+    logger.info(`C-Form successfully generated and stored for guest ${guest.customerId}`);
+  } catch (error) {
+    logger.error(`C-Form generation failed for guest ${guest.customerId}: ${error.message}`);
+    await Guest.findByIdAndUpdate(guest._id, {
+      'cForm.status': 'failed'
+    });
+  }
+};
+
 
 // ============================================================
 // CONTROLLER FUNCTIONS
@@ -556,6 +594,12 @@ const registerGuest = asyncHandler(async (req, res) => {
   // STEP 9: CRITICAL OPTIMIZATION: Trigger watchlist check asynchronously
   // This runs AFTER response is sent, doesn't block the user
   triggerWatchlistCheck(guest, hotel);
+
+  setImmediate(() => {
+    generateAndStoreCForm(guest, hotel).catch(err => 
+      logger.error('C-Form generation background task failed:', err.message)
+    );
+  });
 
   logger.info(`Guest registered: ${guest.customerId} in room ${stayDetailsData.roomNumber}`);
 });
@@ -804,6 +848,82 @@ const generateGuestReport = asyncHandler(async (req, res) => {
   res.status(200).send(csvData);
 });
 
+/**
+ * Get C-Form status and signed URL for a guest
+ * @route GET /api/guests/:id/cform
+ * @access Private (Hotel staff only)
+ */
+const getCFormStatus = asyncHandler(async (req, res) => {
+  const guestId = req.params.id;
+  const hotelUserId = req.user._id;
+
+  const guest = await Guest.findOne({ _id: guestId, hotel: hotelUserId }).select('cForm').lean();
+
+  if (!guest) {
+    throw new ApiError(404, 'Guest not found or access denied');
+  }
+
+  if (guest.cForm?.status === 'generated' && guest.cForm.pdfPublicId) {
+    const signedUrl = generateSignedUrl(guest.cForm.pdfPublicId);
+    return res.status(200).json(new ApiResponse(200, {
+      ...guest.cForm,
+      signedUrl
+    }, 'C-Form fetched successfully'));
+  }
+
+  res.status(200).json(new ApiResponse(200, guest.cForm || { status: 'not_required' }, 'C-Form status retrieved'));
+});
+
+/**
+ * Mark C-Form as submitted
+ * @route PUT /api/guests/:id/cform/submit
+ * @access Private (Hotel staff only)
+ */
+const markCFormSubmitted = asyncHandler(async (req, res) => {
+  const guestId = req.params.id;
+  const hotelUserId = req.user._id;
+
+  const guest = await Guest.findOneAndUpdate(
+    { _id: guestId, hotel: hotelUserId },
+    {
+      'cForm.status': 'submitted',
+      'cForm.submittedAt': new Date(),
+      'cForm.submittedBy': req.user.username,
+    },
+    { new: true }
+  );
+
+  if (!guest) {
+    throw new ApiError(404, 'Guest not found or access denied');
+  }
+
+  await AccessLog.create({
+    action: 'CFORM_MARKED_SUBMITTED',
+    reason: `C-Form for guest ${guest.customerId} marked submitted by ${req.user.username}`,
+  });
+
+  res.status(200).json(new ApiResponse(200, guest.cForm, 'C-Form marked as submitted'));
+});
+
+/**
+ * Get pending C-Forms for a hotel
+ * @route GET /api/guests/cforms/pending
+ * @access Private (Hotel staff only)
+ */
+const getPendingCForms = asyncHandler(async (req, res) => {
+  const hotelUserId = req.user._id;
+
+  const guests = await Guest.find({
+    hotel: hotelUserId,
+    'cForm.status': { $in: ['pending', 'generated'] }
+  })
+    .select('customerId primaryGuest.name primaryGuest.nationality cForm stayDetails.roomNumber createdAt')
+    .sort({ createdAt: -1 })
+    .lean();
+
+  res.status(200).json(new ApiResponse(200, guests, 'Pending C-Forms retrieved'));
+});
+
 module.exports = {
   registerGuest,
   getAllGuests,
@@ -811,4 +931,7 @@ module.exports = {
   checkoutGuest,
   getGuestById,
   generateGuestReport,
+  getCFormStatus,
+  markCFormSubmitted,
+  getPendingCForms,
 };
