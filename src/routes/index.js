@@ -1,4 +1,3 @@
-// src/routes/index.js
 const express = require('express');
 const router = express.Router();
 
@@ -12,6 +11,7 @@ const paymentRoutes = require('./payment.routes.js');
 const roomRoutes = require('./room.routes.js');
 const watchlistRoutes = require('./watchlist.routes.js');
 const weatherRoutes = require('./weather.routes');
+const hotelAnalyticsRoutes = require('./hotelAnalytics.routes');
 
 router.use('/auth', authRoutes);
 router.use('/guests', guestRoutes);
@@ -23,5 +23,6 @@ router.use('/payments', paymentRoutes);
 router.use('/rooms', roomRoutes);
 router.use('/watchlist', watchlistRoutes);
 router.use('/weather', weatherRoutes);
+router.use('/hotel', hotelAnalyticsRoutes);
 
 module.exports = router;
