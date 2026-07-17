@@ -118,6 +118,24 @@ const guestSchema = new mongoose.Schema({
     enum: ['Checked-In', 'Checked-Out'],
     default: 'Checked-In',
   },
+  retentionExpiresAt: {
+    type: Date,
+    index: true
+  },
+  isAnonymized: {
+    type: Boolean,
+    default: false,
+    index: true
+  },
+  anonymizedAt: {
+    type: Date
+  },
+  deletionRequestedAt: {
+    type: Date
+  },
+  deletionScheduledFor: {
+    type: Date
+  },
   registrationTimestamp: {
     type: Date,
     default: Date.now,

@@ -13,6 +13,7 @@ const watchlistRoutes = require('./watchlist.routes.js');
 const weatherRoutes = require('./weather.routes');
 const hotelAnalyticsRoutes = require('./hotelAnalytics.routes');
 const complianceRoutes = require('./compliance.routes');
+const retentionRoutes = require('./retention.routes');
 
 router.use('/auth', authRoutes);
 router.use('/guests', guestRoutes);
@@ -26,5 +27,6 @@ router.use('/watchlist', watchlistRoutes);
 router.use('/weather', weatherRoutes);
 router.use('/hotel', hotelAnalyticsRoutes);
 router.use('/admin/compliance', complianceRoutes);
+router.use('/', retentionRoutes);
 
 module.exports = router;

@@ -707,6 +707,7 @@ const checkoutGuest = asyncHandler(async (req, res) => {
   // STEP 1: Update guest status
   guest.status = 'Checked-Out';
   guest.stayDetails.checkOut = new Date();
+  guest.retentionExpiresAt = new Date(Date.now() + (3 * 365 * 24 * 60 * 60 * 1000));
   await guest.save();
 
   // STEP 2: Vacate room (synchronous — must complete before response to prevent orphaned rooms)
