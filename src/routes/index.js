@@ -12,6 +12,7 @@ const roomRoutes = require('./room.routes.js');
 const watchlistRoutes = require('./watchlist.routes.js');
 const weatherRoutes = require('./weather.routes');
 const hotelAnalyticsRoutes = require('./hotelAnalytics.routes');
+const complianceRoutes = require('./compliance.routes');
 
 router.use('/auth', authRoutes);
 router.use('/guests', guestRoutes);
@@ -24,5 +25,6 @@ router.use('/rooms', roomRoutes);
 router.use('/watchlist', watchlistRoutes);
 router.use('/weather', weatherRoutes);
 router.use('/hotel', hotelAnalyticsRoutes);
+router.use('/admin/compliance', complianceRoutes);
 
 module.exports = router;
