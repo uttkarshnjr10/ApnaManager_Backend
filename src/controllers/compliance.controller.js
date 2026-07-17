@@ -1,6 +1,6 @@
 const ComplianceRequest = require('../models/ComplianceRequest.model');
 const Guest = require('../models/guest.model');
-const AccessLog = require('../models/access-log.model');
+const { createAuditLog } = require('../utils/auditLogger');
 const Notification = require('../models/notification.model');
 const asyncHandler = require('express-async-handler');
 const ApiError = require('../utils/api-error');
@@ -64,7 +64,7 @@ const createComplianceRequest = asyncHandler(async (req, res) => {
     status: 'Logged'
   });
 
-  await AccessLog.create({
+  await createAuditLog({
     user: req.user._id,
     userModel: 'RegionalAdmin',
     action: 'COMPLIANCE_REQUEST_LOGGED',
@@ -280,7 +280,7 @@ const exportComplianceData = asyncHandler(async (req, res) => {
   
   for (const g of guests) {
     uniqueHotelIds.add(g.hotel._id.toString());
-    await AccessLog.create({
+    await createAuditLog({
       user: req.user._id,
       userModel: 'RegionalAdmin',
       action: 'COMPLIANCE_DATA_EXPORTED',
@@ -324,7 +324,7 @@ const rejectComplianceRequest = asyncHandler(async (req, res) => {
     throw new ApiError(404, 'Compliance request not found');
   }
 
-  await AccessLog.create({
+  await createAuditLog({
     user: req.user._id,
     userModel: 'RegionalAdmin',
     action: 'COMPLIANCE_REQUEST_REJECTED',
@@ -360,6 +360,12 @@ const getComplianceStats = asyncHandler(async (req, res) => {
   }, 'Compliance Stats retrieved'));
 });
 
+const verifyAuditChainEndpoint = asyncHandler(async (req, res) => {
+  const { verifyAuditChain } = require('../utils/auditLogger');
+  const result = await verifyAuditChain();
+  res.status(200).json(new ApiResponse(200, result, 'Audit chain verification completed'));
+});
+
 module.exports = {
   createComplianceRequest,
   getAllComplianceRequests,
@@ -367,5 +373,6 @@ module.exports = {
   searchGuestsForCompliance,
   exportComplianceData,
   rejectComplianceRequest,
-  getComplianceStats
+  getComplianceStats,
+  verifyAuditChainEndpoint
 };

@@ -2,11 +2,11 @@
 const mongoose = require('mongoose');
 const Guest = require('../models/guest.model');
 const Hotel = require('../models/hotel.model');
-const AccessLog = require('../models/access-log.model');
 const Watchlist = require('../models/watchlist.model');
 const Alert = require('../models/alert.model');
 const Notification = require('../models/notification.model');
 const RegionalAdmin = require('../models/regional-admin.model');
+const { createAuditLog } = require('../utils/auditLogger');
 
 const asyncHandler = require('express-async-handler');
 const logger = require('../utils/logger');
@@ -451,7 +451,7 @@ const checkWatchlistAndNotifyAsync = async (guest, hotel) => {
 
     // ── Step 8: Log in AccessLog ──
     try {
-      await AccessLog.create({
+      await createAuditLog({
         action: 'WATCHLIST_MATCH_DETECTED',
         reason: `Match at ${hotel.hotelName} for type(s): ${matches.map(m => m.type).join(', ')}`,
       });
@@ -723,7 +723,7 @@ const checkoutGuest = asyncHandler(async (req, res) => {
   }
 
   // STEP 3: Create access log (non-blocking)
-  AccessLog.create({
+  createAuditLog({
     user: req.user._id,
     userModel: 'Hotel',
     action: 'Guest Checkout',
@@ -898,7 +898,7 @@ const markCFormSubmitted = asyncHandler(async (req, res) => {
     throw new ApiError(404, 'Guest not found or access denied');
   }
 
-  await AccessLog.create({
+  await createAuditLog({
     action: 'CFORM_MARKED_SUBMITTED',
     reason: `C-Form for guest ${guest.customerId} marked submitted by ${req.user.username}`,
   });

@@ -26,6 +26,12 @@ const accessLogSchema = new mongoose.Schema({
     type: Date,
     default: Date.now,
   },
+  entryHash: {
+    type: String,
+  },
+  previousHash: {
+    type: String,
+  },
 });
 
 accessLogSchema.index({ timestamp: -1 });

@@ -1,6 +1,6 @@
 const Watchlist = require('../models/watchlist.model');
 const Alert = require('../models/alert.model');
-const AccessLog = require('../models/access-log.model');
+const { createAuditLog } = require('../utils/auditLogger');
 const asyncHandler = require('express-async-handler');
 const ApiError = require('../utils/api-error');
 const ApiResponse = require('../utils/api-response');
@@ -74,7 +74,7 @@ const dismissAlert = asyncHandler(async (req, res) => {
 
   if (!alert) throw new ApiError(404, 'Alert not found');
 
-  await AccessLog.create({
+  await createAuditLog({
     action: 'WATCHLIST_ALERT_DISMISSED',
     reason: `Alert ${id} dismissed by ${req.user.username}. Notes: ${notes || 'None'}`,
   });
@@ -98,7 +98,7 @@ const actionAlert = asyncHandler(async (req, res) => {
 
   if (!alert) throw new ApiError(404, 'Alert not found');
 
-  await AccessLog.create({
+  await createAuditLog({
     action: 'WATCHLIST_ALERT_ACTIONED',
     reason: `Alert ${id} actioned by ${req.user.username}. Notes: ${notes}`,
   });

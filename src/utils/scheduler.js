@@ -4,8 +4,30 @@ const logger = require('./logger');
 const Guest = require('../models/guest.model');
 const Notification = require('../models/notification.model');
 const { getIO } = require('../config/socket');
+const { verifyAuditChain } = require('./auditLogger');
+const AccessLog = require('../models/access-log.model');
 
 function startScheduledJobs() {
+  // Job 0: Audit Chain verification every Sunday at 4 AM
+  cron.schedule('0 4 * * 0', async () => {
+    logger.info('Starting weekly audit chain verification');
+    try {
+      const result = await verifyAuditChain();
+      if (!result.valid) {
+        logger.error('CRITICAL: Audit chain integrity violation detected at entry: ' + result.brokenAt);
+        // Direct AccessLog.create since chain is broken
+        await AccessLog.create({
+          action: 'AUDIT_CHAIN_VIOLATION_DETECTED',
+          reason: 'Chain broken at: ' + result.brokenAt,
+          timestamp: new Date()
+        });
+      } else {
+        logger.info('Audit chain verification passed: ' + result.checkedCount + ' entries verified');
+      }
+    } catch (error) {
+      logger.error(`Audit chain verification job failed: ${error.message}`);
+    }
+  });
   // Job 1: Run every night at 2:00 AM for automated retention processing
   cron.schedule('0 2 * * *', async () => {
     logger.info('Starting scheduled data retention job');

@@ -1,5 +1,5 @@
 const Guest = require('../models/guest.model');
-const AccessLog = require('../models/access-log.model');
+const { createAuditLog } = require('./auditLogger');
 const cloudinary = require('cloudinary').v2;
 const logger = require('./logger');
 
@@ -67,7 +67,7 @@ const anonymizeSingleGuest = async (guest) => {
   });
 
   // c) Create AccessLog entry
-  await AccessLog.create({
+  await createAuditLog({
     action: 'GUEST_DATA_ANONYMIZED',
     reason: 'Automated retention policy / portal request',
     user: null, // System action

@@ -9,7 +9,18 @@ const {
 const regionalAdminSchema = new mongoose.Schema(
   {
     ...baseAuthFields,
-    // Add specific admin fields here if needed in future
+    // TOTP fields
+    totpSecret: {
+      type: String,
+      select: false,
+    },
+    totpEnabled: {
+      type: Boolean,
+      default: false,
+    },
+    totpVerifiedAt: {
+      type: Date,
+    },
   },
   { timestamps: true }
 );

@@ -7,9 +7,12 @@ const {
   searchGuestsForCompliance,
   exportComplianceData,
   rejectComplianceRequest,
-  getComplianceStats
+  getComplianceStats,
+  verifyAuditChainEndpoint
 } = require('../controllers/compliance.controller');
 const { protect, authorize } = require('../middleware/auth.middleware');
+
+router.get('/audit/verify', protect, authorize('Regional Admin'), verifyAuditChainEndpoint);
 
 router.post('/', protect, authorize('Regional Admin'), createComplianceRequest);
 router.get('/', protect, authorize('Regional Admin'), getAllComplianceRequests);

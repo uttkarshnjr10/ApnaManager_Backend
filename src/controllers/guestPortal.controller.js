@@ -1,5 +1,5 @@
 const Guest = require('../models/guest.model');
-const AccessLog = require('../models/access-log.model');
+const { createAuditLog } = require('../utils/auditLogger');
 const Notification = require('../models/notification.model');
 const asyncHandler = require('express-async-handler');
 const ApiError = require('../utils/api-error');
@@ -188,7 +188,7 @@ const requestDeletion = asyncHandler(async (req, res) => {
     message = `Your data will be deleted on ${new Date(guest.retentionExpiresAt).toLocaleDateString()}. We are required to retain records for 3 years by law.`;
   }
 
-  await AccessLog.create({
+  await createAuditLog({
     action: 'GUEST_DELETION_REQUESTED',
     reason: 'Guest self-service portal request',
     userModel: 'RegionalAdmin'
