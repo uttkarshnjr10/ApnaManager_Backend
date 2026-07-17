@@ -1,4 +1,6 @@
 const Watchlist = require('../models/watchlist.model');
+const Alert = require('../models/alert.model');
+const AccessLog = require('../models/access-log.model');
 const asyncHandler = require('express-async-handler');
 const ApiError = require('../utils/api-error');
 const ApiResponse = require('../utils/api-response');
@@ -52,8 +54,63 @@ const deleteWatchlistItem = asyncHandler(async (req, res) => {
   res.status(200).json(new ApiResponse(200, null, 'Item removed from watchlist'));
 });
 
+const getWatchlistAlerts = asyncHandler(async (req, res) => {
+  const alerts = await Alert.find({ status: 'Open' })
+    .populate('guest', 'primaryGuest.name stayDetails.roomNumber')
+    .sort({ createdAt: -1 });
+
+  res.status(200).json(new ApiResponse(200, alerts, 'Watchlist alerts retrieved successfully'));
+});
+
+const dismissAlert = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { notes } = req.body;
+
+  const alert = await Alert.findByIdAndUpdate(
+    id,
+    { status: 'Resolved', reviewNote: notes, reviewedBy: req.user._id },
+    { new: true }
+  );
+
+  if (!alert) throw new ApiError(404, 'Alert not found');
+
+  await AccessLog.create({
+    action: 'WATCHLIST_ALERT_DISMISSED',
+    reason: `Alert ${id} dismissed by ${req.user.username}. Notes: ${notes || 'None'}`,
+  });
+
+  res.status(200).json(new ApiResponse(200, alert, 'Alert dismissed successfully'));
+});
+
+const actionAlert = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { notes } = req.body;
+
+  if (!notes) {
+    throw new ApiError(400, 'Action notes are required');
+  }
+
+  const alert = await Alert.findByIdAndUpdate(
+    id,
+    { status: 'Reviewed', reviewNote: notes, reviewedBy: req.user._id },
+    { new: true }
+  );
+
+  if (!alert) throw new ApiError(404, 'Alert not found');
+
+  await AccessLog.create({
+    action: 'WATCHLIST_ALERT_ACTIONED',
+    reason: `Alert ${id} actioned by ${req.user.username}. Notes: ${notes}`,
+  });
+
+  res.status(200).json(new ApiResponse(200, alert, 'Alert actioned successfully'));
+});
+
 module.exports = {
   getWatchlistItems,
   addWatchlistItem,
   deleteWatchlistItem,
+  getWatchlistAlerts,
+  dismissAlert,
+  actionAlert,
 };

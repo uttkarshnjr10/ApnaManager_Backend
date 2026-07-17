@@ -370,6 +370,7 @@ const checkWatchlistAndNotifyAsync = async (guest, hotel) => {
       return Alert.create({
         guest: guest._id,
         hotel: hotel._id,
+        hotelName: hotel.hotelName,
         reason:
           `AUTOMATIC FLAG: ${roleLabel} "${person.name}" matched watchlist. ` +
           `Reason: "${match.reason}" (Match on: ${match.type})`,
@@ -379,6 +380,9 @@ const checkWatchlistAndNotifyAsync = async (guest, hotel) => {
           identifier: person.identifier,
           role: person.role,
         },
+        matchedField: match.type,
+        matchedValue: match.value,
+        creatorModel: 'System',
       });
     });
 
@@ -388,7 +392,7 @@ const checkWatchlistAndNotifyAsync = async (guest, hotel) => {
     const populatedAlerts = await Promise.all(
       alerts.map((a) =>
         Alert.findById(a._id)
-          .populate('guest', 'primaryGuest.name idNumber stayDetails.roomNumber')
+          .populate('guest', 'primaryGuest.name stayDetails.roomNumber')
           .lean()
       )
     );
@@ -403,7 +407,7 @@ const checkWatchlistAndNotifyAsync = async (guest, hotel) => {
     const notificationMessage =
       `WATCHLIST MATCH at ${hotel.hotelName}: ` + matchSummaries.join('; ');
 
-    // ── Step 6: Batch insert notifications for admins + hotel ──
+    // ── Step 6: Batch insert notifications for admins ──
     const admins = await RegionalAdmin.find({ status: 'Active' }).select('_id').lean();
     const adminNotifications = admins.map((admin) => ({
       recipientUser: admin._id,
@@ -412,46 +416,47 @@ const checkWatchlistAndNotifyAsync = async (guest, hotel) => {
       isRead: false,
     }));
 
-    // Also notify the hotel itself
-    const hotelNotification = {
-      recipientUser: hotel._id,
-      recipientModel: 'Hotel',
-      message: notificationMessage,
-      isRead: false,
-    };
-
-    await Notification.insertMany([...adminNotifications, hotelNotification]);
+    await Notification.insertMany(adminNotifications);
     logger.info(
-      `Sent ${admins.length} admin + 1 hotel notification(s) for ${matches.length} watchlist match(es)`
+      `Sent ${admins.length} admin notification(s) for ${matches.length} watchlist match(es)`
     );
 
     // ── Step 7: Socket emit (non-blocking) ──
     try {
       const io = getIO();
 
-      // Notify all platform admins
-      io.to('admin_global').emit('NEW_ALERT', {
-        type: 'WATCHLIST_HIT',
-        message: notificationMessage,
-        alerts: populatedAlerts,
-        hotelName: hotel.hotelName,
-        matchCount: matches.length,
-        timestamp: new Date(),
-      });
+      populatedAlerts.forEach(alert => {
+        const guestName = alert.guest?.primaryGuest?.name?.split(' ')[0] || 'Unknown';
+        const roomNumber = alert.guest?.stayDetails?.roomNumber || 'Unknown';
 
-      // Notify the specific hotel
-      io.to(`hotel_${hotel._id.toString()}`).emit('NEW_ALERT', {
-        type: 'WATCHLIST_HIT',
-        message: notificationMessage,
-        alerts: populatedAlerts,
-        matchCount: matches.length,
-        timestamp: new Date(),
+        // Notify all platform admins
+        io.to('admin_global').emit('WATCHLIST_MATCH', {
+          type: 'WATCHLIST_MATCH',
+          alertId: alert._id,
+          guestName: guestName,
+          hotelName: alert.hotelName,
+          roomNumber: roomNumber,
+          checkInTime: guest.stayDetails.checkIn,
+          matchType: alert.matchedField,
+          timestamp: new Date(),
+        });
       });
 
       logger.info(`Socket events emitted for ${matches.length} watchlist match(es)`);
     } catch (socketError) {
       logger.error(`Socket emit failed: ${socketError.message}`);
     }
+
+    // ── Step 8: Log in AccessLog ──
+    try {
+      await AccessLog.create({
+        action: 'WATCHLIST_MATCH_DETECTED',
+        reason: `Match at ${hotel.hotelName} for type(s): ${matches.map(m => m.type).join(', ')}`,
+      });
+    } catch (logError) {
+      logger.error(`Failed to create AccessLog for watchlist match: ${logError.message}`);
+    }
+
   } catch (error) {
     logger.error(`Watchlist check failed: ${error.message}`);
     // Don't throw - this is a background task

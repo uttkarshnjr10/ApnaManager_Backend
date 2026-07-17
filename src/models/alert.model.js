@@ -14,6 +14,10 @@ const alertSchema = new mongoose.Schema(
       ref: 'Hotel',
       required: true,
     },
+    hotelName: {
+      type: String,
+      required: true,
+    },
     reason: {
       type: String,
       required: true,
@@ -37,6 +41,21 @@ const alertSchema = new mongoose.Schema(
       name: { type: String },
       identifier: { type: String },
       role: { type: String, enum: ['Primary', 'Accompanying'] },
+    },
+    matchedField: {
+      type: String,
+    },
+    matchedValue: {
+      type: String,
+    },
+    createdBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      refPath: 'creatorModel',
+      required: false,
+    },
+    creatorModel: {
+      type: String,
+      enum: ['System', 'RegionalAdmin'],
     },
   },
   { timestamps: true }
