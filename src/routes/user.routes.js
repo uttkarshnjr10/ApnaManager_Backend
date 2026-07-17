@@ -8,7 +8,6 @@ const {
   updateUserPassword,
   getAdminDashboardData,
   getHotelUsers,
-  getPoliceUsers,
   updateUserStatus,
   deleteUser,
   getAccessLogs,
@@ -31,8 +30,6 @@ router.get('/admin/logs', protect, authorize('Regional Admin'), getAccessLogs);
 //  hotel users (Admin access)
 router.get('/admin/hotels', protect, authorize('Regional Admin'), getHotelUsers); // Added /admin prefix
 
-//  managing police users
-router.get('/police', protect, authorize('Regional Admin'), getPoliceUsers);
 
 //  managing any user by ID
 router.put('/:id/status', protect, authorize('Regional Admin'), updateUserStatus);

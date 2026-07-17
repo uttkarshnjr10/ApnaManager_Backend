@@ -1,6 +1,5 @@
 // src/controllers/auth.controller.js
 const Hotel = require('../models/hotel.model');
-const Police = require('../models/police.model');
 const RegionalAdmin = require('../models/regional-admin.model');
 const jwt = require('jsonwebtoken');
 const asyncHandler = require('express-async-handler');
@@ -21,7 +20,6 @@ const { sendPasswordResetEmail } = require('../utils/send-email');
  */
 const USER_MODELS = {
   Hotel: Hotel,
-  Police: Police,
   'Regional Admin': RegionalAdmin,
   RegionalAdmin: RegionalAdmin, // Alias for compatibility
 };
@@ -42,14 +40,12 @@ const findUserByEmail = async (email, loginType) => {
   }
 
   // Fallback: Search all collections in parallel
-  const [hotel, police, admin] = await Promise.all([
+  const [hotel, admin] = await Promise.all([
     Hotel.findOne({ email }).select('+password'),
-    Police.findOne({ email }).select('+password'),
     RegionalAdmin.findOne({ email }).select('+password'),
   ]);
 
   if (hotel) return { user: hotel, role: 'Hotel' };
-  if (police) return { user: police, role: 'Police' };
   if (admin) return { user: admin, role: 'Regional Admin' };
 
   return { user: null, role: null };
@@ -58,7 +54,7 @@ const findUserByEmail = async (email, loginType) => {
 /**
  * Generates JWT token for authenticated user
  * @param {string} id - User's MongoDB ID
- * @param {string} role - User's role (Hotel, Police, Regional Admin)
+ * @param {string} role - User's role (Hotel, Regional Admin)
  * @param {string} username - User's username
  * @returns {string} JWT token
  */
@@ -124,13 +120,12 @@ const findUserByResetToken = async (hashedToken) => {
     passwordResetExpires: { $gt: Date.now() },
   };
 
-  const [hotel, police, admin] = await Promise.all([
+  const [hotel, admin] = await Promise.all([
     Hotel.findOne(query),
-    Police.findOne(query),
     RegionalAdmin.findOne(query),
   ]);
 
-  return hotel || police || admin || null;
+  return hotel || admin || null;
 };
 
 // ============================================================
@@ -329,7 +324,6 @@ const forceChangePassword = asyncHandler(async (req, res) => {
 
   // Find user in any collection
   let user = await Hotel.findById(userId).select('+password');
-  if (!user) user = await Police.findById(userId).select('+password');
   if (!user) user = await RegionalAdmin.findById(userId).select('+password');
 
   if (!user) {

@@ -1,6 +1,5 @@
 // src/controllers/user.controller.js
 const Hotel = require('../models/hotel.model');
-const Police = require('../models/police.model');
 const RegionalAdmin = require('../models/regional-admin.model');
 const HotelInquiry = require('../models/hotel-inquiry.model');
 const AccessLog = require('../models/access-log.model');
@@ -28,7 +27,6 @@ const reportCache = new NodeCache({ stdTTL: 3600 });
  */
 const USER_MODELS = {
   Hotel: Hotel,
-  Police: Police,
   'Regional Admin': RegionalAdmin,
 };
 
@@ -48,7 +46,6 @@ const PROFILE_EDITABLE_FIELDS = {
     'localThana',
     'pinLocation',
   ],
-  Police: [],
   'Regional Admin': [],
 };
 
@@ -58,12 +55,11 @@ const PROFILE_EDITABLE_FIELDS = {
  * @returns {Promise<Object|null>} User object if found, null otherwise
  */
 const checkEmailExists = async (email) => {
-  const [hotel, police, admin] = await Promise.all([
+  const [hotel, admin] = await Promise.all([
     Hotel.findOne({ email }),
-    Police.findOne({ email }),
     RegionalAdmin.findOne({ email }),
   ]);
-  return hotel || police || admin || null;
+  return hotel || admin || null;
 };
 
 /**
@@ -74,9 +70,6 @@ const checkEmailExists = async (email) => {
 const findAnyUserById = async (id) => {
   let user = await Hotel.findById(id);
   if (user) return { user, model: Hotel, role: 'Hotel' };
-
-  user = await Police.findById(id);
-  if (user) return { user, model: Police, role: 'Police' };
 
   user = await RegionalAdmin.findById(id);
   if (user) return { user, model: RegionalAdmin, role: 'Regional Admin' };
@@ -167,7 +160,7 @@ const pickAllowedFields = (source, allowedFields) => {
  * @returns {Promise<void>} Created user credentials
  */
 const registerUser = asyncHandler(async (req, res) => {
-  const { username, email, role, details, policeStation } = req.body;
+  const { username, email, role, details } = req.body;
 
   // Validation
   if (!username || !email || !role) {
@@ -224,11 +217,6 @@ const registerUser = asyncHandler(async (req, res) => {
     } catch (inquiryError) {
       logger.error(`Failed to update inquiry for ${user.email}: ${inquiryError.message}`);
     }
-  } else if (role === 'Police') {
-    if (!policeStation) {
-      throw new ApiError(400, 'Police station is required for police users');
-    }
-    user = await Police.create({ ...commonData, ...details, policeStation });
   } else if (role === 'Regional Admin') {
     user = await RegionalAdmin.create({ ...commonData, ...details });
   } else {
@@ -378,10 +366,7 @@ const updateUserPassword = asyncHandler(async (req, res) => {
  */
 const getAdminDashboardData = asyncHandler(async (req, res) => {
   // Count users in each collection
-  const [hotelCount, policeCount] = await Promise.all([
-    Hotel.countDocuments(),
-    Police.countDocuments(),
-  ]);
+  const hotelCount = await Hotel.countDocuments();
 
   // Get today's date range
   const startOfDay = new Date();
@@ -390,37 +375,24 @@ const getAdminDashboardData = asyncHandler(async (req, res) => {
   endOfDay.setHours(23, 59, 59, 999);
 
   // Count today's activities
-  const [guestRegistrationsToday, policeSearchesToday] = await Promise.all([
-    Guest.countDocuments({
-      registrationTimestamp: { $gte: startOfDay, $lte: endOfDay },
-    }),
-    AccessLog.countDocuments({
-      timestamp: { $gte: startOfDay, $lte: endOfDay },
-      userModel: 'Police',
-      action: { $regex: /search/i },
-    }),
-  ]);
+  const guestRegistrationsToday = await Guest.countDocuments({
+    registrationTimestamp: { $gte: startOfDay, $lte: endOfDay },
+  });
 
   // Get recent users
-  const [recentHotels, recentPolice] = await Promise.all([
-    Hotel.find().sort({ createdAt: -1 }).limit(5).select('username city hotelName status').lean(),
-    Police.find()
-      .sort({ createdAt: -1 })
-      .limit(5)
-      .select('username station jurisdiction status')
-      .lean(),
-  ]);
+  const recentHotels = await Hotel.find()
+    .sort({ createdAt: -1 })
+    .limit(5)
+    .select('username city hotelName status')
+    .lean();
 
   const dashboardData = {
     metrics: {
       hotels: hotelCount,
-      police: policeCount,
       guestsToday: guestRegistrationsToday,
-      searchesToday: policeSearchesToday,
     },
     users: {
       hotels: recentHotels,
-      police: recentPolice,
     },
   };
 
@@ -468,12 +440,6 @@ const getAIDailyReport = asyncHandler(async (req, res) => {
       registrationTimestamp: { $gte: startOfDay, $lte: endOfDay },
     }).select('primaryGuest stayDetails');
 
-    const policeSearches = await AccessLog.countDocuments({
-      timestamp: { $gte: startOfDay, $lte: endOfDay },
-      userModel: 'Police',
-      action: { $regex: /search/i },
-    });
-
     statsPayload = {
       totalGuests: guestsToday.length,
       foreignNationals: guestsToday.filter((g) => g.primaryGuest?.nationality !== 'Indian').length,
@@ -481,7 +447,6 @@ const getAIDailyReport = asyncHandler(async (req, res) => {
       topPurposes: getTopItems(
         guestsToday.map((g) => g.stayDetails?.purposeOfVisit).filter(Boolean)
       ),
-      policeSearches,
     };
   } else if (role === 'Hotel') {
     // Hotel sees only their data
@@ -540,29 +505,6 @@ const getHotelUsers = asyncHandler(async (req, res) => {
   res.status(200).json(new ApiResponse(200, hotels, 'Hotels retrieved successfully'));
 });
 
-/**
- * Get list of police users with optional filtering
- * @route GET /api/users/police
- * @access Private/Admin
- * @param {Object} req.query - { searchTerm, status }
- * @returns {Promise<void>} List of police users
- */
-const getPoliceUsers = asyncHandler(async (req, res) => {
-  const { searchTerm, status } = req.query;
-  const query = {};
-
-  if (status && status !== 'All') {
-    query.status = status;
-  }
-
-  if (searchTerm) {
-    const regex = new RegExp(searchTerm, 'i');
-    query.$or = [{ username: regex }, { station: regex }, { jurisdiction: regex }];
-  }
-
-  const policeUsers = await Police.find(query).lean();
-  res.status(200).json(new ApiResponse(200, policeUsers, 'Police users retrieved successfully'));
-});
 
 /**
  * Update user status (Active/Suspended)
@@ -652,13 +594,12 @@ const getAccessLogs = asyncHandler(async (req, res) => {
     const regex = new RegExp(searchTerm, 'i');
 
     // Find matching users
-    const [hotels, police, admins] = await Promise.all([
+    const [hotels, admins] = await Promise.all([
       Hotel.find({ username: regex }).select('_id'),
-      Police.find({ username: regex }).select('_id'),
       RegionalAdmin.find({ username: regex }).select('_id'),
     ]);
 
-    const userIds = [...hotels, ...police, ...admins].map((u) => u._id);
+    const userIds = [...hotels, ...admins].map((u) => u._id);
 
     query.$or = [
       { action: regex },
@@ -685,7 +626,6 @@ module.exports = {
   getAdminDashboardData,
   getAIDailyReport,
   getHotelUsers,
-  getPoliceUsers,
   updateUserStatus,
   deleteUser,
   getAccessLogs,

@@ -2,7 +2,6 @@
 const jwt = require('jsonwebtoken');
 const asyncHandler = require('express-async-handler');
 const Hotel = require('../models/hotel.model');
-const Police = require('../models/police.model');
 const RegionalAdmin = require('../models/regional-admin.model');
 const logger = require('../utils/logger');
 const { client: redisClient } = require('../config/redis');
@@ -36,8 +35,6 @@ const protect = asyncHandler(async (req, res, next) => {
     let user;
     if (decoded.role === 'Hotel') {
       user = await Hotel.findById(decoded.id).select('-password');
-    } else if (decoded.role === 'Police') {
-      user = await Police.findById(decoded.id).select('-password');
     } else if (decoded.role === 'Regional Admin') {
       user = await RegionalAdmin.findById(decoded.id).select('-password');
     }
@@ -59,9 +56,6 @@ const protect = asyncHandler(async (req, res, next) => {
 
 const authorize = (...roles) => {
   return (req, res, next) => {
-    // Check req.user.role (which we attached in protect)
-    // OR check the discriminator key if present (e.g., req.user.kind)
-
     const userRole =
       req.user.role ||
       (req.user.constructor.modelName === 'RegionalAdmin'

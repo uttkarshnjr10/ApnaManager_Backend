@@ -23,12 +23,8 @@ const addWatchlistItem = asyncHandler(async (req, res) => {
     throw new ApiError(400, 'This ID or Phone Number is already on the watchlist');
   }
 
-  // Determine the Model based on the logged-in user's role
-  // req.user.role comes from your auth middleware
-  let modelName;
-  if (req.user.role === 'Regional Admin') modelName = 'RegionalAdmin';
-  else if (req.user.role === 'Police') modelName = 'Police';
-  else modelName = 'RegionalAdmin'; // Fallback or throw error if Hotels shouldn't add
+  // Only Platform Admins (Regional Admin) can add to watchlist
+  const modelName = 'RegionalAdmin';
 
   const newItem = await Watchlist.create({
     value: value.trim(),

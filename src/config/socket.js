@@ -1,7 +1,7 @@
+// src/config/socket.js
 const { Server } = require('socket.io');
 const jwt = require('jsonwebtoken');
 const logger = require('../utils/logger');
-const Police = require('../models/police.model');
 
 let io;
 
@@ -52,18 +52,6 @@ const initSocket = (httpServer) => {
 
     // Every authenticated user joins a personal room for targeted notifications
     socket.join(`user_${socket.user.id}`);
-
-    // Police Officers join their Station's room
-    if (socket.user.role === 'Police') {
-      try {
-        const officer = await Police.findById(socket.user.id).select('policeStation').lean();
-        if (officer?.policeStation) {
-          socket.join(`station_${officer.policeStation.toString()}`);
-        }
-      } catch (error) {
-        logger.error(`Socket room join error: ${error.message}`);
-      }
-    }
 
     // Regional Admins join the global admin room
     if (socket.user.role === 'Regional Admin') {

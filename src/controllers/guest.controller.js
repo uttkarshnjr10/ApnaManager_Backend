@@ -2,12 +2,10 @@
 const mongoose = require('mongoose');
 const Guest = require('../models/guest.model');
 const Hotel = require('../models/hotel.model');
-const Police = require('../models/police.model');
 const AccessLog = require('../models/access-log.model');
 const Watchlist = require('../models/watchlist.model');
 const Alert = require('../models/alert.model');
 const Notification = require('../models/notification.model');
-const PoliceStation = require('../models/police-station.model');
 const RegionalAdmin = require('../models/regional-admin.model');
 
 const asyncHandler = require('express-async-handler');
@@ -334,7 +332,7 @@ const buildPersonLookup = (guest) => {
 };
 
 /**
- * CRITICAL: Check watchlist against ALL persons in a booking and notify police.
+ * CRITICAL: Check watchlist against ALL persons in a booking and notify admins + hotel.
  * This function runs AFTER the HTTP response is sent to avoid blocking the user.
  * Uses Promise.all for parallel operations and batches notifications.
  *
@@ -350,28 +348,16 @@ const checkWatchlistAndNotifyAsync = async (guest, hotel) => {
 
     if (allValues.length === 0) return;
 
-    // ── Step 2: Find ALL watchlist matches (not just the first one) ──
+    // ── Step 2: Find ALL watchlist matches ──
     const matches = await Watchlist.find({
       value: { $in: allValues },
     })
-      .select('value reason type addedBy addedByModel')
-      .populate('addedBy', 'username')
+      .select('value reason type')
       .lean();
 
     if (!matches || matches.length === 0) return;
 
-    // ── Step 3: Identify the hotel's police jurisdiction ──
-    const hotelPincode = hotel.pinCode;
-    if (!hotelPincode) {
-      logger.error(`Hotel ${hotel.hotelName} has no pincode. Cannot notify police.`);
-      return;
-    }
-
-    const station = await PoliceStation.findOne({ pincodes: hotelPincode })
-      .select('_id name city')
-      .lean();
-
-    // ── Step 4: Create an alert for EACH matched person ──
+    // ── Step 3: Create an alert for EACH matched person ──
     const alertPromises = matches.map((match) => {
       const person = personLookup.get(match.value);
       const roleLabel = person.role === 'Primary' ? 'Primary Guest' : 'Accompanying Guest';
@@ -383,11 +369,10 @@ const checkWatchlistAndNotifyAsync = async (guest, hotel) => {
 
       return Alert.create({
         guest: guest._id,
+        hotel: hotel._id,
         reason:
           `AUTOMATIC FLAG: ${roleLabel} "${person.name}" matched watchlist. ` +
           `Reason: "${match.reason}" (Match on: ${match.type})`,
-        createdBy: match.addedBy._id,
-        creatorModel: match.addedByModel,
         status: 'Open',
         matchedPerson: {
           name: person.name,
@@ -399,27 +384,16 @@ const checkWatchlistAndNotifyAsync = async (guest, hotel) => {
 
     const alerts = await Promise.all(alertPromises);
 
-    if (!station) {
-      logger.warn(`No police station found with jurisdiction over pincode ${hotelPincode}`);
-      return;
-    }
-
-    // ── Step 5: Fetch officers and populated alerts in parallel ──
-    const [officers, ...populatedAlerts] = await Promise.all([
-      Police.find({ policeStation: station._id }).select('_id').lean(),
-      ...alerts.map((a) =>
+    // ── Step 4: Populate alerts for socket payload ──
+    const populatedAlerts = await Promise.all(
+      alerts.map((a) =>
         Alert.findById(a._id)
           .populate('guest', 'primaryGuest.name idNumber stayDetails.roomNumber')
           .lean()
-      ),
-    ]);
+      )
+    );
 
-    if (!officers || officers.length === 0) {
-      logger.warn(`No officers found for station ${station.name}`);
-      return;
-    }
-
-    // ── Step 6: Build a combined notification message ──
+    // ── Step 5: Build notification message ──
     const matchSummaries = matches.map((match) => {
       const person = personLookup.get(match.value);
       const roleLabel = person.role === 'Primary' ? 'Primary' : 'Accompanying';
@@ -429,15 +403,7 @@ const checkWatchlistAndNotifyAsync = async (guest, hotel) => {
     const notificationMessage =
       `WATCHLIST MATCH at ${hotel.hotelName}: ` + matchSummaries.join('; ');
 
-    // ── Step 7: Batch insert notifications for officers + admins ──
-    const notificationDocs = officers.map((officer) => ({
-      recipientStation: station._id,
-      recipientUser: officer._id,
-      recipientModel: 'Police',
-      message: notificationMessage,
-      isRead: false,
-    }));
-
+    // ── Step 6: Batch insert notifications for admins + hotel ──
     const admins = await RegionalAdmin.find({ status: 'Active' }).select('_id').lean();
     const adminNotifications = admins.map((admin) => ({
       recipientUser: admin._id,
@@ -446,17 +412,25 @@ const checkWatchlistAndNotifyAsync = async (guest, hotel) => {
       isRead: false,
     }));
 
-    await Notification.insertMany([...notificationDocs, ...adminNotifications]);
+    // Also notify the hotel itself
+    const hotelNotification = {
+      recipientUser: hotel._id,
+      recipientModel: 'Hotel',
+      message: notificationMessage,
+      isRead: false,
+    };
+
+    await Notification.insertMany([...adminNotifications, hotelNotification]);
     logger.info(
-      `Sent ${officers.length} police + ${admins.length} admin notifications for ${matches.length} watchlist match(es)`
+      `Sent ${admins.length} admin + 1 hotel notification(s) for ${matches.length} watchlist match(es)`
     );
 
-    // ── Step 8: Socket emit (non-blocking) ──
+    // ── Step 7: Socket emit (non-blocking) ──
     try {
       const io = getIO();
-      const stationRoom = `station_${station._id.toString()}`;
 
-      io.to(stationRoom).emit('NEW_ALERT', {
+      // Notify all platform admins
+      io.to('admin_global').emit('NEW_ALERT', {
         type: 'WATCHLIST_HIT',
         message: notificationMessage,
         alerts: populatedAlerts,
@@ -465,11 +439,11 @@ const checkWatchlistAndNotifyAsync = async (guest, hotel) => {
         timestamp: new Date(),
       });
 
-      io.to('admin_global').emit('NEW_ALERT', {
-        type: 'WATCHLIST_HIT_ADMIN',
-        message: `CRITICAL: ${matches.length} watchlist hit(s) in ${station.city}`,
+      // Notify the specific hotel
+      io.to(`hotel_${hotel._id.toString()}`).emit('NEW_ALERT', {
+        type: 'WATCHLIST_HIT',
+        message: notificationMessage,
         alerts: populatedAlerts,
-        stationName: station.name,
         matchCount: matches.length,
         timestamp: new Date(),
       });
