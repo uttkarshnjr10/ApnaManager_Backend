@@ -14,6 +14,7 @@ const weatherRoutes = require('./weather.routes');
 const hotelAnalyticsRoutes = require('./hotelAnalytics.routes');
 const complianceRoutes = require('./compliance.routes');
 const retentionRoutes = require('./retention.routes');
+const guestPortalRoutes = require('./guestPortal.routes');
 
 router.use('/auth', authRoutes);
 router.use('/guests', guestRoutes);
@@ -28,5 +29,6 @@ router.use('/weather', weatherRoutes);
 router.use('/hotel', hotelAnalyticsRoutes);
 router.use('/admin/compliance', complianceRoutes);
 router.use('/', retentionRoutes);
+router.use('/portal', guestPortalRoutes);
 
 module.exports = router;

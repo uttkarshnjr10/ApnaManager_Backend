@@ -77,4 +77,31 @@ const sendPasswordResetEmail = async (toEmail, username, resetUrl) => {
   await sendEmail(msg, 'password reset');
 };
 
-module.exports = { sendCredentialsEmail, sendCheckoutEmail, sendPasswordResetEmail };
+const sendPortalOTPEmail = async (toEmail, otp) => {
+  const msg = {
+    to: toEmail,
+    from: {
+      name: 'ApnaManager Data Portal',
+      email: fromEmail,
+    },
+    subject: 'Your Data Portal Verification Code',
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 500px; margin: 0 auto; border: 1px solid #eaeaea; border-radius: 8px; overflow: hidden;">
+        <div style="background-color: #2563eb; padding: 20px; text-align: center;">
+          <h2 style="color: #ffffff; margin: 0;">ApnaManager</h2>
+        </div>
+        <div style="padding: 24px;">
+          <p style="font-size: 16px; color: #333;">Hello,</p>
+          <p style="font-size: 16px; color: #333;">Please use the following 6-digit code to access the Guest Data Portal. This code will expire in 10 minutes.</p>
+          <div style="text-align: center; margin: 32px 0;">
+            <span style="font-size: 32px; font-weight: bold; letter-spacing: 8px; color: #1e40af; background: #eff6ff; padding: 12px 24px; border-radius: 8px;">${otp}</span>
+          </div>
+          <p style="font-size: 14px; color: #666; margin-top: 24px;">If you did not request this code, please ignore this email.</p>
+        </div>
+      </div>
+    `,
+  };
+  await sendEmail(msg, 'portal OTP');
+};
+
+module.exports = { sendCredentialsEmail, sendCheckoutEmail, sendPasswordResetEmail, sendPortalOTPEmail };
