@@ -15,6 +15,8 @@ const hotelAnalyticsRoutes = require('./hotelAnalytics.routes');
 const complianceRoutes = require('./compliance.routes');
 const retentionRoutes = require('./retention.routes');
 const guestPortalRoutes = require('./guestPortal.routes');
+const badgeRoutes = require('./badge.routes');
+const { verifyHotelBadge } = require('../controllers/badge.controller');
 
 router.use('/auth', authRoutes);
 router.use('/guests', guestRoutes);
@@ -30,5 +32,7 @@ router.use('/hotel', hotelAnalyticsRoutes);
 router.use('/admin/compliance', complianceRoutes);
 router.use('/', retentionRoutes);
 router.use('/portal', guestPortalRoutes);
+router.use('/badge', badgeRoutes);
+router.get('/public/verify/:code', verifyHotelBadge);
 
 module.exports = router;

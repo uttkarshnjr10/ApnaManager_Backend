@@ -39,6 +39,7 @@
     "node-cache": "^5.1.2",
     "node-cron": "^4.6.0",
     "pdfkit": "^0.17.1",
+    "qrcode": "^1.5.4",
     "redis": "^5.8.0",
     "sharp": "^0.34.5",
     "socket.io": "^4.8.3",

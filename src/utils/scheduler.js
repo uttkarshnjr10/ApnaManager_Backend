@@ -54,6 +54,61 @@ function startScheduledJobs() {
     }
   });
 
+  // Job 3: Run daily at 3:00 AM for hotel badge eligibility check
+  cron.schedule('0 3 * * *', async () => {
+    logger.info('Starting hotel badge eligibility check');
+    try {
+      const Hotel = require('../models/hotel.model');
+      
+      const activeHotels = await Hotel.find({
+        role: 'Hotel', // ensure only hotels
+        status: 'Active',
+        badgeEligible: false
+      });
+
+      const now = Date.now();
+
+      for (const hotel of activeHotels) {
+        const daysSinceCreated = Math.floor((now - hotel.createdAt.getTime()) / 86400000);
+        
+        if (daysSinceCreated >= 30) {
+          const thirtyDaysAgo = new Date(now - 30 * 24 * 60 * 60 * 1000);
+          
+          const guestCount = await Guest.countDocuments({
+            hotel: hotel._id,
+            registrationTimestamp: { $gte: thirtyDaysAgo }
+          });
+
+          if (guestCount >= 10) {
+            const verificationCode = 'AM' + hotel._id.toString().slice(-6).toUpperCase() + Math.random().toString(36).substr(2, 4).toUpperCase();
+            
+            hotel.verificationCode = verificationCode;
+            hotel.verifiedAt = new Date();
+            hotel.badgeEligible = true;
+            
+            await hotel.save();
+
+            const message = "Congratulations! Your hotel is now eligible for the Apna Manager Compliance Badge. Download it from Settings.";
+            
+            await Notification.create({
+              recipientUser: hotel._id,
+              message
+            });
+
+            const io = getIO();
+            io.to(hotel._id.toString()).emit('NOTIFICATION', { message });
+            
+            logger.info(`Hotel ${hotel.hotelName} earned compliance badge`);
+          }
+        }
+      }
+      
+      logger.info('Hotel badge eligibility check complete');
+    } catch (error) {
+      logger.error(`Hotel badge check failed: ${error.message}`);
+    }
+  });
+
   logger.info('Scheduled jobs initialized');
 }
 
