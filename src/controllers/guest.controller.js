@@ -231,8 +231,12 @@ const claimRoomAtomically = async (hotelId, roomNumber, guestId) => {
   const updatedHotel = await Hotel.findOneAndUpdate(
     {
       _id: hotelId,
-      'rooms.roomNumber': roomNumber,
-      'rooms.status': 'Vacant',
+      rooms: {
+        $elemMatch: {
+          roomNumber: roomNumber,
+          status: 'Vacant'
+        }
+      }
     },
     {
       $set: {
