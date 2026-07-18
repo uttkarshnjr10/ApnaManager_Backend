@@ -4,7 +4,7 @@ const accessLogSchema = new mongoose.Schema({
   // FIX: Dynamic Reference
   user: {
     type: mongoose.Schema.Types.ObjectId,
-    required: true,
+    required: false,
     refPath: 'userModel', // Dynamically point to Hotel/Police/Admin
   },
   userModel: {
@@ -26,6 +26,14 @@ const accessLogSchema = new mongoose.Schema({
     type: Date,
     default: Date.now,
   },
+  entryHash: {
+    type: String,
+  },
+  previousHash: {
+    type: String,
+  },
 });
+
+accessLogSchema.index({ timestamp: -1 });
 
 module.exports = mongoose.model('AccessLog', accessLogSchema);

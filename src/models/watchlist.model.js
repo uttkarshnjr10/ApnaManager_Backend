@@ -27,7 +27,7 @@ const watchlistSchema = new mongoose.Schema(
     addedByModel: {
       type: String,
       required: true,
-      enum: ['Police', 'RegionalAdmin'],
+      enum: ['RegionalAdmin'],
     },
   },
   {

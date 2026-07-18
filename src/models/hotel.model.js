@@ -42,6 +42,11 @@ const hotelSchema = new mongoose.Schema(
       default: 'Inactive',
     },
     subscriptionPeriodEnd: { type: Date },
+    // Compliant Hotel Badge Fields
+    verificationCode: { type: String, unique: true, sparse: true },
+    verifiedAt: { type: Date },
+    badgeEligible: { type: Boolean, default: false },
+
     rooms: [roomSchema],
   },
   { timestamps: true }

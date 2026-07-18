@@ -22,6 +22,8 @@ const startServer = async () => {
   try {
     // 1. Connect to MongoDB
     await connectDB();
+    const { startScheduledJobs } = require('./src/utils/scheduler');
+    startScheduledJobs();
 
     // 2. Connect to Redis (non-blocking — app works without it)
     try {

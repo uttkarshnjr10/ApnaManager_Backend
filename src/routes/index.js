@@ -1,4 +1,3 @@
-// src/routes/index.js
 const express = require('express');
 const router = express.Router();
 
@@ -6,30 +5,34 @@ const authRoutes = require('./auth.routes');
 const guestRoutes = require('./guest.routes');
 const inquiryRoutes = require('./inquiry.routes');
 const notificationRoutes = require('./notification.routes');
-// const ocrRoutes = require('./ocr.routes');
-const policeRoutes = require('./police.routes');
-const policeStationRoutes = require('./police-station.routes');
 const uploadRoutes = require('./upload.routes');
 const userRoutes = require('./user.routes');
-// const autocompleteRoutes = require('./autocomplete.routes');
 const paymentRoutes = require('./payment.routes.js');
 const roomRoutes = require('./room.routes.js');
 const watchlistRoutes = require('./watchlist.routes.js');
 const weatherRoutes = require('./weather.routes');
+const hotelAnalyticsRoutes = require('./hotelAnalytics.routes');
+const complianceRoutes = require('./compliance.routes');
+const retentionRoutes = require('./retention.routes');
+const guestPortalRoutes = require('./guestPortal.routes');
+const badgeRoutes = require('./badge.routes');
+const { verifyHotelBadge } = require('../controllers/badge.controller');
 
 router.use('/auth', authRoutes);
 router.use('/guests', guestRoutes);
 router.use('/inquiries', inquiryRoutes);
 router.use('/notifications', notificationRoutes);
-// router.use('/ocr', ocrRoutes);
-router.use('/police', policeRoutes);
-router.use('/stations', policeStationRoutes);
 router.use('/upload', uploadRoutes);
 router.use('/users', userRoutes);
-// router.use('/autocomplete', autocompleteRoutes);
 router.use('/payments', paymentRoutes);
 router.use('/rooms', roomRoutes);
 router.use('/watchlist', watchlistRoutes);
 router.use('/weather', weatherRoutes);
+router.use('/hotel', hotelAnalyticsRoutes);
+router.use('/admin/compliance', complianceRoutes);
+router.use('/', retentionRoutes);
+router.use('/portal', guestPortalRoutes);
+router.use('/badge', badgeRoutes);
+router.get('/public/verify/:code', verifyHotelBadge);
 
 module.exports = router;

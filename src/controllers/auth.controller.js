@@ -1,6 +1,5 @@
 // src/controllers/auth.controller.js
 const Hotel = require('../models/hotel.model');
-const Police = require('../models/police.model');
 const RegionalAdmin = require('../models/regional-admin.model');
 const jwt = require('jsonwebtoken');
 const asyncHandler = require('express-async-handler');
@@ -21,7 +20,6 @@ const { sendPasswordResetEmail } = require('../utils/send-email');
  */
 const USER_MODELS = {
   Hotel: Hotel,
-  Police: Police,
   'Regional Admin': RegionalAdmin,
   RegionalAdmin: RegionalAdmin, // Alias for compatibility
 };
@@ -42,14 +40,12 @@ const findUserByEmail = async (email, loginType) => {
   }
 
   // Fallback: Search all collections in parallel
-  const [hotel, police, admin] = await Promise.all([
+  const [hotel, admin] = await Promise.all([
     Hotel.findOne({ email }).select('+password'),
-    Police.findOne({ email }).select('+password'),
     RegionalAdmin.findOne({ email }).select('+password'),
   ]);
 
   if (hotel) return { user: hotel, role: 'Hotel' };
-  if (police) return { user: police, role: 'Police' };
   if (admin) return { user: admin, role: 'Regional Admin' };
 
   return { user: null, role: null };
@@ -58,7 +54,7 @@ const findUserByEmail = async (email, loginType) => {
 /**
  * Generates JWT token for authenticated user
  * @param {string} id - User's MongoDB ID
- * @param {string} role - User's role (Hotel, Police, Regional Admin)
+ * @param {string} role - User's role (Hotel, Regional Admin)
  * @param {string} username - User's username
  * @returns {string} JWT token
  */
@@ -124,13 +120,12 @@ const findUserByResetToken = async (hashedToken) => {
     passwordResetExpires: { $gt: Date.now() },
   };
 
-  const [hotel, police, admin] = await Promise.all([
+  const [hotel, admin] = await Promise.all([
     Hotel.findOne(query),
-    Police.findOne(query),
     RegionalAdmin.findOne(query),
   ]);
 
-  return hotel || police || admin || null;
+  return hotel || admin || null;
 };
 
 // ============================================================
@@ -175,19 +170,25 @@ const loginUser = asyncHandler(async (req, res) => {
       );
   }
 
+  // Check if TOTP is required for Regional Admin
+  if (role === 'Regional Admin' && user.totpEnabled) {
+    // Generate preAuthToken valid for 5 mins
+    const preAuthToken = jwt.sign({ adminId: user._id, preAuth: true }, process.env.JWT_SECRET, { expiresIn: '5m' });
+    return res.status(202).json(new ApiResponse(202, { requiresTOTP: true, preAuthToken }, 'Two-Factor Authentication required'));
+  }
+
   // Generate token
   const token = generateToken(user._id, role, user.username);
 
   // Set cookie
   res.cookie('jwt', token, cookieOptions);
 
-  // Prepare response data
+  // Prepare response data (token is NOT included — it's in the httpOnly cookie only)
   const userData = {
     _id: user._id,
     username: user.username,
     email: user.email,
     role: role,
-    token: token, // Also send in response for localStorage fallback
   };
 
   logger.info(`Successful login: ${role} - ${user.email} (Type: ${loginType || 'Auto'})`);
@@ -330,7 +331,6 @@ const forceChangePassword = asyncHandler(async (req, res) => {
 
   // Find user in any collection
   let user = await Hotel.findById(userId).select('+password');
-  if (!user) user = await Police.findById(userId).select('+password');
   if (!user) user = await RegionalAdmin.findById(userId).select('+password');
 
   if (!user) {
@@ -360,10 +360,119 @@ const forceChangePassword = asyncHandler(async (req, res) => {
     );
 });
 
+const QRCode = require('qrcode');
+const { authenticator } = require('otplib');
+
+const setupTOTP = asyncHandler(async (req, res) => {
+  if (req.user.role !== 'RegionalAdmin') {
+    throw new ApiError(403, 'Forbidden');
+  }
+
+  const admin = await RegionalAdmin.findById(req.user._id);
+  if (!admin) throw new ApiError(404, 'Admin not found');
+
+  const secret = authenticator.generateSecret();
+  const otpauth = authenticator.keyuri(admin.email, 'Apna Manager', secret);
+  const qrCode = await QRCode.toDataURL(otpauth);
+
+  await redisClient.set(`totp_setup_${admin._id.toString()}`, secret, { EX: 300 });
+
+  res.status(200).json(new ApiResponse(200, { qrCode, secret }, 'Scan this QR code with Google Authenticator or Authy'));
+});
+
+const verifyAndEnableTOTP = asyncHandler(async (req, res) => {
+  if (req.user.role !== 'RegionalAdmin') {
+    throw new ApiError(403, 'Forbidden');
+  }
+
+  const { code } = req.body;
+  if (!code) throw new ApiError(400, 'Code is required');
+
+  const adminId = req.user._id.toString();
+  const pendingSecret = await redisClient.get(`totp_setup_${adminId}`);
+
+  if (!pendingSecret) {
+    throw new ApiError(400, 'Setup session expired. Start again.');
+  }
+
+  const isValid = authenticator.verify({ token: code, secret: pendingSecret });
+  if (!isValid) {
+    throw new ApiError(400, 'Invalid code. Try again.');
+  }
+
+  const admin = await RegionalAdmin.findById(adminId);
+  admin.totpSecret = pendingSecret;
+  admin.totpEnabled = true;
+  admin.totpVerifiedAt = new Date();
+  await admin.save();
+
+  await redisClient.del(`totp_setup_${adminId}`);
+
+  res.status(200).json(new ApiResponse(200, null, '2FA enabled successfully'));
+});
+
+const completeTOTPLogin = asyncHandler(async (req, res) => {
+  const { preAuthToken, code } = req.body;
+  if (!preAuthToken || !code) {
+    throw new ApiError(400, 'preAuthToken and code are required');
+  }
+
+  let decoded;
+  try {
+    decoded = jwt.verify(preAuthToken, process.env.JWT_SECRET);
+  } catch (err) {
+    throw new ApiError(401, 'Invalid or expired pre-auth token');
+  }
+
+  if (!decoded.preAuth || !decoded.adminId) {
+    throw new ApiError(401, 'Invalid token payload');
+  }
+
+  const adminId = decoded.adminId;
+  const failKey = `totp_fail_${adminId}`;
+  
+  const failCount = await redisClient.get(failKey);
+  if (failCount && parseInt(failCount) >= 5) {
+    throw new ApiError(429, 'Too many failed attempts. Try again in 30 minutes.');
+  }
+
+  const admin = await RegionalAdmin.findById(adminId).select('+totpSecret +password');
+  if (!admin) {
+    throw new ApiError(404, 'Admin not found');
+  }
+
+  const isValid = authenticator.verify({ token: code, secret: admin.totpSecret });
+  if (!isValid) {
+    let newCount = 1;
+    if (failCount) {
+      newCount = parseInt(failCount) + 1;
+    }
+    await redisClient.set(failKey, newCount, { EX: 1800 }); // 30 minutes
+    throw new ApiError(401, 'Invalid authenticator code');
+  }
+
+  await redisClient.del(failKey);
+
+  const token = generateToken(admin._id, 'Regional Admin', admin.username);
+  res.cookie('jwt', token, cookieOptions);
+
+  const userData = {
+    _id: admin._id,
+    email: admin.email,
+    username: admin.username,
+    role: 'Regional Admin',
+  };
+
+  res.status(200).json(new ApiResponse(200, userData, 'Login successful'));
+});
+
 module.exports = {
   loginUser,
   logoutUser,
   forgotPassword,
   resetPassword,
   forceChangePassword,
+  setupTOTP,
+  verifyAndEnableTOTP,
+  completeTOTPLogin,
 };

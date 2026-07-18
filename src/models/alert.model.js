@@ -1,3 +1,5 @@
+// src/models/alert.model.js — Redesigned as AdminAlert
+// Alerts are now system-generated watchlist matches reviewed by Platform Admins.
 const mongoose = require('mongoose');
 
 const alertSchema = new mongoose.Schema(
@@ -7,35 +9,60 @@ const alertSchema = new mongoose.Schema(
       ref: 'Guest',
       required: true,
     },
+    hotel: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Hotel',
+      required: true,
+    },
+    hotelName: {
+      type: String,
+      required: true,
+    },
     reason: {
       type: String,
       required: true,
     },
     status: {
       type: String,
-      enum: ['Open', 'Resolved'],
+      enum: ['Open', 'Reviewed', 'Resolved'],
       default: 'Open',
     },
-    // FIX: Dynamic Creator
+    // Who reviews/resolves the alert
+    reviewedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'RegionalAdmin',
+    },
+    reviewNote: {
+      type: String,
+      trim: true,
+    },
+    // Identifies the exact person who triggered the alert
+    matchedPerson: {
+      name: { type: String },
+      identifier: { type: String },
+      role: { type: String, enum: ['Primary', 'Accompanying'] },
+    },
+    matchedField: {
+      type: String,
+    },
+    matchedValue: {
+      type: String,
+    },
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,
-      required: true,
       refPath: 'creatorModel',
+      required: false,
     },
     creatorModel: {
       type: String,
-      required: true,
-      enum: ['Police', 'RegionalAdmin', 'System'], // Must match Mongoose model names for refPath
-    },
-    // Optional: Identifies the exact person who triggered the alert
-    // (useful when the match is an accompanying guest, not the primary)
-    matchedPerson: {
-      name: { type: String },
-      identifier: { type: String }, // The ID number or phone that matched
-      role: { type: String, enum: ['Primary', 'Accompanying'] },
+      enum: ['System', 'RegionalAdmin'],
     },
   },
   { timestamps: true }
 );
+
+// ── Indexes ─────────────────────────────────────────────────────
+alertSchema.index({ hotel: 1, status: 1 });
+alertSchema.index({ status: 1, createdAt: -1 });
 
 module.exports = mongoose.model('Alert', alertSchema);

@@ -2,17 +2,17 @@
 const mongoose = require('mongoose');
 const Guest = require('../models/guest.model');
 const Hotel = require('../models/hotel.model');
-const Police = require('../models/police.model');
-const AccessLog = require('../models/access-log.model');
 const Watchlist = require('../models/watchlist.model');
 const Alert = require('../models/alert.model');
 const Notification = require('../models/notification.model');
-const PoliceStation = require('../models/police-station.model');
 const RegionalAdmin = require('../models/regional-admin.model');
+const { createAuditLog } = require('../utils/auditLogger');
 
 const asyncHandler = require('express-async-handler');
 const logger = require('../utils/logger');
 const generateGuestPDF = require('../utils/pdf-generator');
+const { generateCForm } = require('../utils/cformGenerator');
+const { uploadBufferToCloudinary } = require('../utils/uploadBuffer');
 const { generateGuestReportCSV } = require('../utils/report-generator');
 const { sendCheckoutEmail } = require('../utils/send-email');
 const ApiError = require('../utils/api-error');
@@ -213,20 +213,47 @@ const validateRoomAvailability = (hotel, roomNumber) => {
 };
 
 /**
- * Update room status to occupied
- * @param {Object} hotel - Hotel document
- * @param {string} roomNumber - Room number to update
+ * Atomically claim a room as Occupied.
+ * Uses findOneAndUpdate with a query targeting status: 'Vacant' to prevent
+ * TOCTOU race conditions when concurrent requests target the same room.
+ *
+ * @param {string} hotelId - Hotel document ID
+ * @param {string} roomNumber - Room number to claim
  * @param {string} guestId - Guest ID to assign
  * @returns {Promise<Object>} Updated hotel document
+ * @throws {ApiError} If room doesn't exist, is already occupied, or hotel not found
  */
-const updateRoomStatus = async (hotel, roomNumber, guestId) => {
-  const room = hotel.rooms.find((r) => r.roomNumber === roomNumber);
-  if (room) {
-    room.status = 'Occupied';
-    room.guestId = guestId;
-    await hotel.save();
+const claimRoomAtomically = async (hotelId, roomNumber, guestId) => {
+  if (!roomNumber) {
+    throw new ApiError(400, 'Room number is required');
   }
-  return hotel;
+
+  const updatedHotel = await Hotel.findOneAndUpdate(
+    {
+      _id: hotelId,
+      'rooms.roomNumber': roomNumber,
+      'rooms.status': 'Vacant',
+    },
+    {
+      $set: {
+        'rooms.$.status': 'Occupied',
+        'rooms.$.guestId': guestId,
+      },
+    },
+    { new: true }
+  );
+
+  if (!updatedHotel) {
+    // Determine the specific error: room doesn't exist vs already occupied
+    const hotel = await Hotel.findById(hotelId).select('rooms').lean();
+    if (!hotel) throw new ApiError(404, 'Hotel not found');
+
+    const room = hotel.rooms.find((r) => r.roomNumber === roomNumber);
+    if (!room) throw new ApiError(404, `Room "${roomNumber}" does not exist`);
+    throw new ApiError(400, `Room "${roomNumber}" is already occupied`);
+  }
+
+  return updatedHotel;
 };
 
 /**
@@ -307,7 +334,7 @@ const buildPersonLookup = (guest) => {
 };
 
 /**
- * CRITICAL: Check watchlist against ALL persons in a booking and notify police.
+ * CRITICAL: Check watchlist against ALL persons in a booking and notify admins + hotel.
  * This function runs AFTER the HTTP response is sent to avoid blocking the user.
  * Uses Promise.all for parallel operations and batches notifications.
  *
@@ -323,28 +350,16 @@ const checkWatchlistAndNotifyAsync = async (guest, hotel) => {
 
     if (allValues.length === 0) return;
 
-    // ── Step 2: Find ALL watchlist matches (not just the first one) ──
+    // ── Step 2: Find ALL watchlist matches ──
     const matches = await Watchlist.find({
       value: { $in: allValues },
     })
-      .select('value reason type addedBy addedByModel')
-      .populate('addedBy', 'username')
+      .select('value reason type')
       .lean();
 
     if (!matches || matches.length === 0) return;
 
-    // ── Step 3: Identify the hotel's police jurisdiction ──
-    const hotelPincode = hotel.pinCode;
-    if (!hotelPincode) {
-      logger.error(`Hotel ${hotel.hotelName} has no pincode. Cannot notify police.`);
-      return;
-    }
-
-    const station = await PoliceStation.findOne({ pincodes: hotelPincode })
-      .select('_id name city')
-      .lean();
-
-    // ── Step 4: Create an alert for EACH matched person ──
+    // ── Step 3: Create an alert for EACH matched person ──
     const alertPromises = matches.map((match) => {
       const person = personLookup.get(match.value);
       const roleLabel = person.role === 'Primary' ? 'Primary Guest' : 'Accompanying Guest';
@@ -356,43 +371,35 @@ const checkWatchlistAndNotifyAsync = async (guest, hotel) => {
 
       return Alert.create({
         guest: guest._id,
+        hotel: hotel._id,
+        hotelName: hotel.hotelName,
         reason:
           `AUTOMATIC FLAG: ${roleLabel} "${person.name}" matched watchlist. ` +
           `Reason: "${match.reason}" (Match on: ${match.type})`,
-        createdBy: match.addedBy._id,
-        creatorModel: match.addedByModel,
         status: 'Open',
         matchedPerson: {
           name: person.name,
           identifier: person.identifier,
           role: person.role,
         },
+        matchedField: match.type,
+        matchedValue: match.value,
+        creatorModel: 'System',
       });
     });
 
     const alerts = await Promise.all(alertPromises);
 
-    if (!station) {
-      logger.warn(`No police station found with jurisdiction over pincode ${hotelPincode}`);
-      return;
-    }
-
-    // ── Step 5: Fetch officers and populated alerts in parallel ──
-    const [officers, ...populatedAlerts] = await Promise.all([
-      Police.find({ policeStation: station._id }).select('_id').lean(),
-      ...alerts.map((a) =>
+    // ── Step 4: Populate alerts for socket payload ──
+    const populatedAlerts = await Promise.all(
+      alerts.map((a) =>
         Alert.findById(a._id)
-          .populate('guest', 'primaryGuest.name idNumber stayDetails.roomNumber')
+          .populate('guest', 'primaryGuest.name stayDetails.roomNumber')
           .lean()
-      ),
-    ]);
+      )
+    );
 
-    if (!officers || officers.length === 0) {
-      logger.warn(`No officers found for station ${station.name}`);
-      return;
-    }
-
-    // ── Step 6: Build a combined notification message ──
+    // ── Step 5: Build notification message ──
     const matchSummaries = matches.map((match) => {
       const person = personLookup.get(match.value);
       const roleLabel = person.role === 'Primary' ? 'Primary' : 'Accompanying';
@@ -402,15 +409,7 @@ const checkWatchlistAndNotifyAsync = async (guest, hotel) => {
     const notificationMessage =
       `WATCHLIST MATCH at ${hotel.hotelName}: ` + matchSummaries.join('; ');
 
-    // ── Step 7: Batch insert notifications for officers + admins ──
-    const notificationDocs = officers.map((officer) => ({
-      recipientStation: station._id,
-      recipientUser: officer._id,
-      recipientModel: 'Police',
-      message: notificationMessage,
-      isRead: false,
-    }));
-
+    // ── Step 6: Batch insert notifications for admins ──
     const admins = await RegionalAdmin.find({ status: 'Active' }).select('_id').lean();
     const adminNotifications = admins.map((admin) => ({
       recipientUser: admin._id,
@@ -419,38 +418,47 @@ const checkWatchlistAndNotifyAsync = async (guest, hotel) => {
       isRead: false,
     }));
 
-    await Notification.insertMany([...notificationDocs, ...adminNotifications]);
+    await Notification.insertMany(adminNotifications);
     logger.info(
-      `Sent ${officers.length} police + ${admins.length} admin notifications for ${matches.length} watchlist match(es)`
+      `Sent ${admins.length} admin notification(s) for ${matches.length} watchlist match(es)`
     );
 
-    // ── Step 8: Socket emit (non-blocking) ──
+    // ── Step 7: Socket emit (non-blocking) ──
     try {
       const io = getIO();
-      const stationRoom = `station_${station._id.toString()}`;
 
-      io.to(stationRoom).emit('NEW_ALERT', {
-        type: 'WATCHLIST_HIT',
-        message: notificationMessage,
-        alerts: populatedAlerts,
-        hotelName: hotel.hotelName,
-        matchCount: matches.length,
-        timestamp: new Date(),
-      });
+      populatedAlerts.forEach(alert => {
+        const guestName = alert.guest?.primaryGuest?.name?.split(' ')[0] || 'Unknown';
+        const roomNumber = alert.guest?.stayDetails?.roomNumber || 'Unknown';
 
-      io.to('admin_global').emit('NEW_ALERT', {
-        type: 'WATCHLIST_HIT_ADMIN',
-        message: `CRITICAL: ${matches.length} watchlist hit(s) in ${station.city}`,
-        alerts: populatedAlerts,
-        stationName: station.name,
-        matchCount: matches.length,
-        timestamp: new Date(),
+        // Notify all platform admins
+        io.to('admin_global').emit('WATCHLIST_MATCH', {
+          type: 'WATCHLIST_MATCH',
+          alertId: alert._id,
+          guestName: guestName,
+          hotelName: alert.hotelName,
+          roomNumber: roomNumber,
+          checkInTime: guest.stayDetails.checkIn,
+          matchType: alert.matchedField,
+          timestamp: new Date(),
+        });
       });
 
       logger.info(`Socket events emitted for ${matches.length} watchlist match(es)`);
     } catch (socketError) {
       logger.error(`Socket emit failed: ${socketError.message}`);
     }
+
+    // ── Step 8: Log in AccessLog ──
+    try {
+      await createAuditLog({
+        action: 'WATCHLIST_MATCH_DETECTED',
+        reason: `Match at ${hotel.hotelName} for type(s): ${matches.map(m => m.type).join(', ')}`,
+      });
+    } catch (logError) {
+      logger.error(`Failed to create AccessLog for watchlist match: ${logError.message}`);
+    }
+
   } catch (error) {
     logger.error(`Watchlist check failed: ${error.message}`);
     // Don't throw - this is a background task
@@ -469,6 +477,42 @@ const triggerWatchlistCheck = (guest, hotel) => {
       logger.error(`Background watchlist check error: ${error.message}`);
     });
   });
+};
+
+/**
+ * Generates and stores C-Form for foreign nationals in the background.
+ * @param {Object} guest - Guest document
+ * @param {Object} hotel - Hotel document
+ */
+const generateAndStoreCForm = async (guest, hotel) => {
+  const nationality = guest.primaryGuest?.nationality?.trim().toLowerCase();
+  
+  if (!nationality || nationality === 'indian') {
+    return;
+  }
+
+  try {
+    const pdfBuffer = await generateCForm(guest, hotel);
+    const filename = `cform_${guest.customerId}_${Date.now()}`;
+    
+    const result = await uploadBufferToCloudinary(pdfBuffer, filename, 'cforms');
+    
+    await Guest.findByIdAndUpdate(guest._id, {
+      cForm: {
+        status: 'generated',
+        pdfUrl: result.url,
+        pdfPublicId: result.public_id,
+        generatedAt: new Date(),
+      }
+    });
+
+    logger.info(`C-Form successfully generated and stored for guest ${guest.customerId}`);
+  } catch (error) {
+    logger.error(`C-Form generation failed for guest ${guest.customerId}: ${error.message}`);
+    await Guest.findByIdAndUpdate(guest._id, {
+      'cForm.status': 'failed'
+    });
+  }
 };
 
 
@@ -503,14 +547,31 @@ const registerGuest = asyncHandler(async (req, res) => {
   const primaryGuestData = buildPrimaryGuestData(req.body);
   const stayDetailsData = buildStayDetails(req.body);
 
-  // STEP 4: Validate room availability (throws if invalid)
-  validateRoomAvailability(hotel, stayDetailsData.roomNumber);
-
-  // STEP 5: Process accompanying guests
+  // STEP 4: Process accompanying guests
   const accompanyingGuestsRaw = parseMaybeJson(req.body.accompanyingGuests, []);
   const accompanyingGuests = processAccompanyingGuests(accompanyingGuestsRaw, filesMap);
 
-  // STEP 6: Create guest document
+  // STEP 4.5: Parse and validate DPDP consent record
+  const consentRecordRaw = parseMaybeJson(req.body.consentRecord, null);
+  if (
+    !consentRecordRaw ||
+    !consentRecordRaw.consentGranted ||
+    !consentRecordRaw.signatureImage ||
+    !consentRecordRaw.consentHash ||
+    !consentRecordRaw.signedAt
+  ) {
+    throw new ApiError(400, 'Valid guest consent record with signature is required under DPDP Act 2023');
+  }
+
+  const consentRecord = {
+    signatureImage: consentRecordRaw.signatureImage,
+    consentTextVersion: consentRecordRaw.consentTextVersion,
+    consentHash: consentRecordRaw.consentHash,
+    signedAt: new Date(consentRecordRaw.signedAt),
+    consentGranted: true,
+  };
+
+  // STEP 5: Create guest document
   const guest = await Guest.create({
     primaryGuest: primaryGuestData,
     idType: req.body.idType,
@@ -521,10 +582,11 @@ const registerGuest = asyncHandler(async (req, res) => {
     accompanyingGuests,
     stayDetails: stayDetailsData,
     hotel: hotelUserId,
+    consentRecord,
   });
 
-  // STEP 7: Update room status
-  await updateRoomStatus(hotel, stayDetailsData.roomNumber, guest._id);
+  // STEP 6: Atomically claim the room (prevents TOCTOU double-booking race condition)
+  await claimRoomAtomically(hotelUserId, stayDetailsData.roomNumber, guest._id);
 
   // STEP 8: Send immediate response to user (don't wait for watchlist check)
   res.status(201).json(new ApiResponse(201, guest, 'Guest registered successfully'));
@@ -532,6 +594,12 @@ const registerGuest = asyncHandler(async (req, res) => {
   // STEP 9: CRITICAL OPTIMIZATION: Trigger watchlist check asynchronously
   // This runs AFTER response is sent, doesn't block the user
   triggerWatchlistCheck(guest, hotel);
+
+  setImmediate(() => {
+    generateAndStoreCForm(guest, hotel).catch(err => 
+      logger.error('C-Form generation background task failed:', err.message)
+    );
+  });
 
   logger.info(`Guest registered: ${guest.customerId} in room ${stayDetailsData.roomNumber}`);
 });
@@ -627,6 +695,11 @@ const checkoutGuest = asyncHandler(async (req, res) => {
     throw new ApiError(404, 'Guest not found');
   }
 
+  // SECURITY: Verify the authenticated hotel owns this guest (prevents IDOR)
+  if (guest.hotel._id.toString() !== req.user._id.toString()) {
+    throw new ApiError(403, 'You are not authorized to checkout this guest');
+  }
+
   if (guest.status === 'Checked-Out') {
     throw new ApiError(400, 'This guest has already been checked out');
   }
@@ -634,33 +707,23 @@ const checkoutGuest = asyncHandler(async (req, res) => {
   // STEP 1: Update guest status
   guest.status = 'Checked-Out';
   guest.stayDetails.checkOut = new Date();
+  guest.retentionExpiresAt = new Date(Date.now() + (3 * 365 * 24 * 60 * 60 * 1000));
   await guest.save();
 
-  // STEP 2: Vacate room (run in background to not block response)
+  // STEP 2: Vacate room (synchronous — must complete before response to prevent orphaned rooms)
   if (guest.hotel && guest.hotel.rooms) {
-    // Don't await - run asynchronously
-    setImmediate(() => {
-      Hotel.findById(guest.hotel._id)
-        .then((hotel) => {
-          if (hotel) {
-            const roomIndex = hotel.rooms.findIndex(
-              (r) => r.roomNumber === guest.stayDetails.roomNumber
-            );
-            if (roomIndex !== -1) {
-              hotel.rooms[roomIndex].status = 'Vacant';
-              hotel.rooms[roomIndex].guestId = null;
-              return hotel.save();
-            }
-          }
-        })
-        .catch((error) => {
-          logger.error(`Failed to vacate room: ${error.message}`);
-        });
-    });
+    const roomIndex = guest.hotel.rooms.findIndex(
+      (r) => r.roomNumber === guest.stayDetails.roomNumber
+    );
+    if (roomIndex !== -1) {
+      guest.hotel.rooms[roomIndex].status = 'Vacant';
+      guest.hotel.rooms[roomIndex].guestId = null;
+      await guest.hotel.save();
+    }
   }
 
   // STEP 3: Create access log (non-blocking)
-  AccessLog.create({
+  createAuditLog({
     user: req.user._id,
     userModel: 'Hotel',
     action: 'Guest Checkout',
@@ -669,7 +732,7 @@ const checkoutGuest = asyncHandler(async (req, res) => {
     logger.error(`Failed to create access log: ${error.message}`);
   });
 
-  // STEP 4: Send response immediately (don't wait for email)
+  // STEP 4: Send response
   res.status(200).json(new ApiResponse(200, null, 'Guest checked out successfully'));
 
   // STEP 5: OPTIMIZATION: Generate PDF and send email asynchronously
@@ -786,6 +849,82 @@ const generateGuestReport = asyncHandler(async (req, res) => {
   res.status(200).send(csvData);
 });
 
+/**
+ * Get C-Form status and signed URL for a guest
+ * @route GET /api/guests/:id/cform
+ * @access Private (Hotel staff only)
+ */
+const getCFormStatus = asyncHandler(async (req, res) => {
+  const guestId = req.params.id;
+  const hotelUserId = req.user._id;
+
+  const guest = await Guest.findOne({ _id: guestId, hotel: hotelUserId }).select('cForm').lean();
+
+  if (!guest) {
+    throw new ApiError(404, 'Guest not found or access denied');
+  }
+
+  if (guest.cForm?.status === 'generated' && guest.cForm.pdfPublicId) {
+    const signedUrl = generateSignedUrl(guest.cForm.pdfPublicId);
+    return res.status(200).json(new ApiResponse(200, {
+      ...guest.cForm,
+      signedUrl
+    }, 'C-Form fetched successfully'));
+  }
+
+  res.status(200).json(new ApiResponse(200, guest.cForm || { status: 'not_required' }, 'C-Form status retrieved'));
+});
+
+/**
+ * Mark C-Form as submitted
+ * @route PUT /api/guests/:id/cform/submit
+ * @access Private (Hotel staff only)
+ */
+const markCFormSubmitted = asyncHandler(async (req, res) => {
+  const guestId = req.params.id;
+  const hotelUserId = req.user._id;
+
+  const guest = await Guest.findOneAndUpdate(
+    { _id: guestId, hotel: hotelUserId },
+    {
+      'cForm.status': 'submitted',
+      'cForm.submittedAt': new Date(),
+      'cForm.submittedBy': req.user.username,
+    },
+    { new: true }
+  );
+
+  if (!guest) {
+    throw new ApiError(404, 'Guest not found or access denied');
+  }
+
+  await createAuditLog({
+    action: 'CFORM_MARKED_SUBMITTED',
+    reason: `C-Form for guest ${guest.customerId} marked submitted by ${req.user.username}`,
+  });
+
+  res.status(200).json(new ApiResponse(200, guest.cForm, 'C-Form marked as submitted'));
+});
+
+/**
+ * Get pending C-Forms for a hotel
+ * @route GET /api/guests/cforms/pending
+ * @access Private (Hotel staff only)
+ */
+const getPendingCForms = asyncHandler(async (req, res) => {
+  const hotelUserId = req.user._id;
+
+  const guests = await Guest.find({
+    hotel: hotelUserId,
+    'cForm.status': { $in: ['pending', 'generated'] }
+  })
+    .select('customerId primaryGuest.name primaryGuest.nationality cForm stayDetails.roomNumber createdAt')
+    .sort({ createdAt: -1 })
+    .lean();
+
+  res.status(200).json(new ApiResponse(200, guests, 'Pending C-Forms retrieved'));
+});
+
 module.exports = {
   registerGuest,
   getAllGuests,
@@ -793,4 +932,7 @@ module.exports = {
   checkoutGuest,
   getGuestById,
   generateGuestReport,
+  getCFormStatus,
+  markCFormSubmitted,
+  getPendingCForms,
 };
