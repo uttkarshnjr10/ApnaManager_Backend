@@ -32,3 +32,16 @@ try {
 } catch (e) {
   console.log(`error ${e}`);
 }
+
+// --- 4. Mock otplib and qrcode to prevent ES module resolution errors ---
+jest.mock('otplib', () => ({
+  authenticator: {
+    generateSecret: jest.fn(() => 'TESTSECRET'),
+    keyuri: jest.fn(() => 'otpauth://totp/ApnaManager:test?secret=TESTSECRET'),
+    verify: jest.fn(({ token, secret }) => token === '123456'), // Mock verifier: accepts '123456'
+  }
+}), { virtual: true });
+
+jest.mock('qrcode', () => ({
+  toDataURL: jest.fn(() => Promise.resolve('data:image/png;base64,mockqrcode')),
+}), { virtual: true });

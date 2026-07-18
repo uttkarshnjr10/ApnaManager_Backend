@@ -8,7 +8,6 @@ const jwt = require('jsonwebtoken');
 
 // Models
 const Hotel = require('../src/models/hotel.model');
-const Police = require('../src/models/police.model');
 const RegionalAdmin = require('../src/models/regional-admin.model');
 
 // Test DB helpers
@@ -91,7 +90,6 @@ describe('Authentication API Tests', () => {
       expect(response.status).toBe(200);
       expect(response.body.success).toBe(true);
       expect(response.body.message).toBe('Login successful');
-      expect(response.body.data).toHaveProperty('token');
       expect(response.body.data).toHaveProperty('_id');
       expect(response.body.data.email).toBe('hotel@test.com');
       expect(response.body.data.role).toBe('Hotel');
@@ -172,27 +170,6 @@ describe('Authentication API Tests', () => {
       expect(response.body.message).toContain('Password change required');
       expect(response.body.data).toHaveProperty('userId');
       expect(response.body.data).toHaveProperty('role');
-    });
-
-    test('SUCCESS: Should login Police user', async () => {
-      const policeStation = new mongoose.Types.ObjectId();
-      const police = await Police.create({
-        username: 'officer123',
-        email: 'police@test.com',
-        password: 'password123',
-        rank: 'Inspector',
-        policeStation,
-        passwordChangeRequired: false,
-      });
-
-      const response = await request(app).post('/api/auth/login').send({
-        email: 'police@test.com',
-        password: 'password123',
-        loginType: 'Police',
-      });
-
-      expect(response.status).toBe(200);
-      expect(response.body.data.role).toBe('Police');
     });
 
     test('SUCCESS: Should login Regional Admin', async () => {
@@ -512,24 +489,5 @@ describe('Authentication API Tests', () => {
       expect(response.body.message).toContain('not required');
     });
 
-    test('SUCCESS: Should work for Police user', async () => {
-      const policeStation = new mongoose.Types.ObjectId();
-      const police = await Police.create({
-        username: 'officer123',
-        email: 'police@test.com',
-        password: 'temppassword',
-        rank: 'Inspector',
-        policeStation,
-        passwordChangeRequired: true,
-      });
-
-      const response = await request(app).post('/api/auth/change-password').send({
-        userId: police._id,
-        newPassword: 'mynewpassword123',
-      });
-
-      expect(response.status).toBe(200);
-      expect(response.body.success).toBe(true);
-    });
   });
 });

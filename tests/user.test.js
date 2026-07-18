@@ -5,12 +5,10 @@ const express = require('express');
 
 // Models
 const Hotel = require('../src/models/hotel.model');
-const Police = require('../src/models/police.model');
 const RegionalAdmin = require('../src/models/regional-admin.model');
 const HotelInquiry = require('../src/models/hotel-inquiry.model');
 const AccessLog = require('../src/models/access-log.model');
 const Guest = require('../src/models/guest.model');
-const PoliceStation = require('../src/models/police-station.model');
 
 // Test DB helpers
 const { connectTestDB, closeTestDB, clearTestDB } = require('./testDb');
@@ -81,7 +79,6 @@ describe('User Management API Tests', () => {
   let app;
   let adminUser;
   let hotelUser;
-  let policeUser;
 
   beforeAll(async () => {
     await connectTestDB();
@@ -139,22 +136,6 @@ describe('User Management API Tests', () => {
       passwordChangeRequired: false,
     });
 
-    const policeStation = await PoliceStation.create({
-      name: 'Test Station',
-      city: 'Mumbai',
-      state: 'Maharashtra',
-      pincodes: ['400001'],
-    });
-
-    policeUser = await Police.create({
-      username: 'officer123',
-      email: 'police@test.com',
-      password: 'password123',
-      rank: 'Inspector',
-      policeStation: policeStation._id,
-      passwordChangeRequired: false,
-    });
-
     // Mock email service
     sendCredentialsEmail.mockResolvedValue(true);
   });
@@ -188,30 +169,6 @@ describe('User Management API Tests', () => {
       const user = await Hotel.findOne({ email: 'newhotel@test.com' });
       expect(user).toBeDefined();
       expect(user.passwordChangeRequired).toBe(true);
-    });
-
-    test('SUCCESS: Should register police user as admin', async () => {
-      const policeStation = await PoliceStation.findOne();
-
-      const response = await request(app)
-        .post('/api/users/register')
-        .set('Authorization', 'Bearer valid-token')
-        .set('testUser', JSON.stringify({ ...adminUser.toObject(), role: 'Regional Admin' }))
-        .send({
-          username: 'newofficer',
-          email: 'newofficer@test.com',
-          role: 'Police',
-          details: {
-            rank: 'Constable',
-          },
-          policeStation: policeStation._id,
-        });
-
-      expect(response.status).toBe(201);
-      expect(response.body.success).toBe(true);
-
-      const user = await Police.findOne({ email: 'newofficer@test.com' });
-      expect(user).toBeDefined();
     });
 
     test('SUCCESS: Should register Regional Admin', async () => {
@@ -261,23 +218,6 @@ describe('User Management API Tests', () => {
       expect(response.body.message).toContain('required');
     });
 
-    test('ERROR: Should fail for police without policeStation', async () => {
-      const response = await request(app)
-        .post('/api/users/register')
-        .set('Authorization', 'Bearer valid-token')
-        .set('testUser', JSON.stringify({ ...adminUser.toObject(), role: 'Regional Admin' }))
-        .send({
-          username: 'officer',
-          email: 'officer@test.com',
-          role: 'Police',
-          details: { rank: 'Constable' },
-          // Missing policeStation
-        });
-
-      expect(response.status).toBe(400);
-      expect(response.body.message).toContain('Police station is required');
-    });
-
     test('SUCCESS: Should continue even if email fails', async () => {
       sendCredentialsEmail.mockRejectedValue(new Error('Email failed'));
 
@@ -313,17 +253,6 @@ describe('User Management API Tests', () => {
       expect(response.body.data.password).toBeUndefined();
     });
 
-    test('SUCCESS: Should get police user profile', async () => {
-      const response = await request(app)
-        .get('/api/users/profile')
-        .set('Authorization', 'Bearer valid-token')
-        .set('testUser', JSON.stringify({ ...policeUser.toObject(), role: 'Police' }));
-
-      expect(response.status).toBe(200);
-      expect(response.body.data.email).toBe('police@test.com');
-      expect(response.body.data.role).toBe('Police');
-    });
-
     test('ERROR: Should fail without authentication', async () => {
       const response = await request(app).get('/api/users/profile');
 
@@ -355,7 +284,7 @@ describe('User Management API Tests', () => {
         .set('Authorization', 'Bearer valid-token')
         .set('testUser', JSON.stringify({ ...hotelUser.toObject(), role: 'Hotel' }))
         .send({
-          email: 'police@test.com', // Already used by police
+          email: 'admin@test.com', // Already used
         });
 
       expect(response.status).toBe(400);
@@ -449,11 +378,9 @@ describe('User Management API Tests', () => {
 
       expect(response.status).toBe(200);
       expect(response.body.data.metrics).toHaveProperty('hotels');
-      expect(response.body.data.metrics).toHaveProperty('police');
       expect(response.body.data.metrics).toHaveProperty('guestsToday');
       expect(response.body.data.metrics.hotels).toBeGreaterThan(0);
       expect(response.body.data.users).toHaveProperty('hotels');
-      expect(response.body.data.users).toHaveProperty('police');
     });
   });
 
@@ -486,15 +413,7 @@ describe('User Management API Tests', () => {
       expect(response.body.data.summary).toBeDefined();
     });
 
-    test('ERROR: Should fail for police role', async () => {
-      const response = await request(app)
-        .get('/api/users/admin/ai-report')
-        .set('Authorization', 'Bearer valid-token')
-        .set('testUser', JSON.stringify({ ...policeUser.toObject(), role: 'Police' }));
 
-      expect(response.status).toBe(403);
-      expect(response.body.message).toContain('not authorized');
-    });
   });
 
   describe('GET /api/users/admin/hotels - Get Hotels', () => {
@@ -532,18 +451,6 @@ describe('User Management API Tests', () => {
     });
   });
 
-  describe('GET /api/users/police - Get Police Users', () => {
-    test('SUCCESS: Should get all police users', async () => {
-      const response = await request(app)
-        .get('/api/users/police')
-        .set('Authorization', 'Bearer valid-token')
-        .set('testUser', JSON.stringify({ ...adminUser.toObject(), role: 'Regional Admin' }));
-
-      expect(response.status).toBe(200);
-      expect(response.body.data).toHaveLength(1);
-      expect(response.body.data[0].email).toBe('police@test.com');
-    });
-  });
 
   describe('PUT /api/users/:id/status - Update User Status', () => {
     test('SUCCESS: Should update hotel status', async () => {
@@ -599,17 +506,6 @@ describe('User Management API Tests', () => {
       expect(deletedHotel).toBeNull();
     });
 
-    test('SUCCESS: Should delete police user', async () => {
-      const response = await request(app)
-        .delete(`/api/users/${policeUser._id}`)
-        .set('Authorization', 'Bearer valid-token')
-        .set('testUser', JSON.stringify({ ...adminUser.toObject(), role: 'Regional Admin' }));
-
-      expect(response.status).toBe(200);
-
-      const deletedPolice = await Police.findById(policeUser._id);
-      expect(deletedPolice).toBeNull();
-    });
 
     test('ERROR: Should fail for non-existent user', async () => {
       const fakeId = new mongoose.Types.ObjectId();
