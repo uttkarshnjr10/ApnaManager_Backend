@@ -18,9 +18,9 @@ module.exports = router;
 // const { protect, authorize } = require('../middleware/auth.middleware');
 
 // router.route('/')
-//     .get(protect, authorize('Police'), getMyNotifications);
+
 
 // router.route('/:id/read')
-//     .put(protect, authorize('Police'), markAsRead);
+
 
 // module.exports = router;
