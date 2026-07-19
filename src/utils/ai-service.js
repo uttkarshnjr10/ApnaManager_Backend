@@ -21,7 +21,7 @@ const generateDailySummary = async (stats, role) => {
     // 3. Handle Role Context
     if (role === 'Regional Admin') {
       roleSpecificInstruction = `
-                Act as a System Administrator for a Government Portal.
+                Act as a System Administrator for a Hotel Management Platform.
                 Your goal is to summarize system activity for the Regional Administrator.
                 Tone: Official, concise, administrative.
             `;
@@ -49,7 +49,7 @@ const generateDailySummary = async (stats, role) => {
             - Top Guest Cities: ${stats.topCities?.length > 0 ? stats.topCities.join(', ') : 'None'}
             - Visit Purposes: ${stats.topPurposes?.length > 0 ? stats.topPurposes.join(', ') : 'None'}
             - Foreign Guests: ${stats.foreignNationals || 0}
-            ${stats.policeSearches !== undefined ? `- Police Searches: ${stats.policeSearches}` : ''}
+            ${stats.adminSearches !== undefined ? `- Admin Searches: ${stats.adminSearches}` : ''}
 
             Write a 3-sentence summary. Do not use markdown. Keep it plain text.
         `;

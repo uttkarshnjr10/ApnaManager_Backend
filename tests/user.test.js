@@ -27,7 +27,7 @@ jest.mock('../src/middleware/auth.middleware', () => ({
     }
 
     // 2. PRIORITY: Check for explicit test user data first
-    // This allows tests to inject exactly the user they need (Hotel, Police, etc.)
+    // This allows tests to inject exactly the user they need (Hotel, RegionalAdmin)
     if (req.headers['testuser']) {
       try {
         req.user = JSON.parse(req.headers['testuser']);

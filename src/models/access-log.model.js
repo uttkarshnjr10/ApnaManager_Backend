@@ -5,12 +5,12 @@ const accessLogSchema = new mongoose.Schema({
   user: {
     type: mongoose.Schema.Types.ObjectId,
     required: false,
-    refPath: 'userModel', // Dynamically point to Hotel/Police/Admin
+    refPath: 'userModel', // Dynamically point to Hotel/RegionalAdmin
   },
   userModel: {
     type: String,
     required: true,
-    enum: ['Hotel', 'Police', 'RegionalAdmin'], // Must match Mongoose model names for refPath
+    enum: ['Hotel', 'RegionalAdmin'], // Must match Mongoose model names for refPath
   },
   action: {
     type: String,

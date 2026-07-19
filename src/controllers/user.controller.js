@@ -153,10 +153,10 @@ const pickAllowedFields = (source, allowedFields) => {
 // ============================================================
 
 /**
- * Register a new user (Hotel, Police, or Regional Admin)
+ * Register a new user (Hotel or Regional Admin)
  * @route POST /api/users/register
  * @access Private/Admin
- * @param {Object} req.body - { username, email, role, details, policeStation }
+ * @param {Object} req.body - { username, email, role, details }
  * @returns {Promise<void>} Created user credentials
  */
 const registerUser = asyncHandler(async (req, res) => {
