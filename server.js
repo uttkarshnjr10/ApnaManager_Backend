@@ -38,7 +38,7 @@ const startServer = async () => {
 
     // 4. Start listening
     server.listen(PORT, () => {
-      logger.info(`🚀 ApnaManager server started successfully`);
+      logger.info(`🚀 Apna Register server started successfully`);
       logger.info(`   Environment : ${process.env.NODE_ENV}`);
       logger.info(`   Port        : ${PORT}`);
       logger.info(`   Process ID  : ${process.pid}`);

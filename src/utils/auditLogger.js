@@ -8,7 +8,7 @@ async function createAuditLog({ user, userModel, action, reason, searchQuery }) 
     .select('entryHash')
     .lean();
   
-  const previousHash = lastEntry?.entryHash || 'GENESIS_BLOCK_APNA_MANAGER';
+  const previousHash = lastEntry?.entryHash || 'GENESIS_BLOCK_APNA_REGISTER';
   
   const timestamp = new Date();
   

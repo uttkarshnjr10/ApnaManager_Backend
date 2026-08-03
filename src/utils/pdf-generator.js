@@ -185,9 +185,9 @@ const createPdfDoc = () => {
     bufferPages: true,
     info: {
       Title: 'Guest Checkout Receipt',
-      Author: 'ApnaManager',
+      Author: 'Apna Register',
       Subject: 'Official guest checkout summary',
-      Producer: 'ApnaManager PDF Service',
+      Producer: 'Apna Register PDF Service',
     },
   });
 };
@@ -217,11 +217,11 @@ const drawWatermark = (doc) => {
   doc.font(CONFIG.fonts.bold).fontSize(CONFIG.fontSizes.watermark);
 
   // Measure actual text width to ensure it never wraps
-  const textWidth = doc.widthOfString('ApnaManager');
+  const textWidth = doc.widthOfString('Apna Register');
   const textX = centerX - textWidth / 2;
 
   doc.rotate(-35, { origin: [centerX, centerY] });
-  doc.text('ApnaManager', textX, centerY - 20, {
+  doc.text('Apna Register', textX, centerY - 20, {
     lineBreak: false,
   });
   doc.restore();
@@ -904,7 +904,7 @@ const drawSecurityNote = (doc, documentRef) => {
 };
 
 // ============================================================
-// FOOTER — Hotel-branded with subtle ApnaManager credit
+// FOOTER — Hotel-branded with subtle Apna Register credit
 // ============================================================
 
 const addPageFooters = (doc, guest, documentRef) => {
@@ -939,7 +939,7 @@ const addPageFooters = (doc, guest, documentRef) => {
       .font(CONFIG.fonts.normal)
       .fontSize(CONFIG.fontSizes.footer)
       .fillColor(CONFIG.colors.textMuted)
-      .text(`Ref: ${documentRef}  •  Powered by ApnaManager`, area.left, lineY + 6, {
+      .text(`Ref: ${documentRef}  •  Powered by Apna Register`, area.left, lineY + 6, {
         width: area.contentWidth,
         align: 'center',
         lineBreak: false,

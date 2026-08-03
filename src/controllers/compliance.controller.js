@@ -187,7 +187,7 @@ const exportComplianceData = asyncHandler(async (req, res) => {
 
       // COVER PAGE
       doc.fontSize(18).font('Helvetica-Bold').text('OFFICIAL DATA EXPORT', { align: 'center' });
-      doc.fontSize(14).font('Helvetica').text('APNA MANAGER COMPLIANCE SYSTEM', { align: 'center' });
+      doc.fontSize(14).font('Helvetica').text('APNA REGISTER COMPLIANCE SYSTEM', { align: 'center' });
       doc.moveDown(2);
 
       const generatedAt = new Date().toLocaleString();

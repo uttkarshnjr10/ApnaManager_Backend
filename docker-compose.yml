@@ -1,17 +1,17 @@
 services:
   # ── Backend Application ──────────────────────────
-  apnamanager-backend:
+  apnaregister-backend:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: ApnaManager-backend-app
+    container_name: ApnaRegister-backend-app
     ports:
       - '${PORT:-5000}:5000'
     env_file:
       - .env
     environment:
       - NODE_ENV=production
-      - MONGO_URI=mongodb://mongo:27017/apnamanager
+      - MONGO_URI=mongodb://mongo:27017/apnaregister
       - REDIS_URL=redis://:${REDIS_PASSWORD:-changeme}@redis:6379
     depends_on:
       mongo:
@@ -38,7 +38,7 @@ services:
   # ── MongoDB Database ─────────────────────────────
   mongo:
     image: mongo:7.0
-    container_name: ApnaManager-mongo-db
+    container_name: ApnaRegister-mongo-db
     # Remove or comment out 'ports' in production to avoid exposing DB on host
     ports:
       - '127.0.0.1:27017:27017'
@@ -67,7 +67,7 @@ services:
   # ── Redis Cache ──────────────────────────────────
   redis:
     image: redis:7-alpine
-    container_name: ApnaManager-redis-cache
+    container_name: ApnaRegister-redis-cache
     # Remove or comment out 'ports' in production to avoid exposing Redis on host
     ports:
       - '127.0.0.1:6379:6379'
