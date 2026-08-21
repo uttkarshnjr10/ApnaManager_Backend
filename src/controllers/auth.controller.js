@@ -364,7 +364,7 @@ const QRCode = require('qrcode');
 const { authenticator } = require('otplib');
 
 const setupTOTP = asyncHandler(async (req, res) => {
-  if (req.user.role !== 'RegionalAdmin') {
+  if (req.user.role !== 'Regional Admin') {
     throw new ApiError(403, 'Forbidden');
   }
 
@@ -381,7 +381,7 @@ const setupTOTP = asyncHandler(async (req, res) => {
 });
 
 const verifyAndEnableTOTP = asyncHandler(async (req, res) => {
-  if (req.user.role !== 'RegionalAdmin') {
+  if (req.user.role !== 'Regional Admin') {
     throw new ApiError(403, 'Forbidden');
   }
 
