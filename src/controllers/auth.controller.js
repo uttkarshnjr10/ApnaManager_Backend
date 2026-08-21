@@ -372,7 +372,7 @@ const setupTOTP = asyncHandler(async (req, res) => {
   if (!admin) throw new ApiError(404, 'Admin not found');
 
   const secret = authenticator.generateSecret();
-  const otpauth = authenticator.keyuri(admin.email, 'Apna Manager', secret);
+  const otpauth = authenticator.keyuri(admin.email, 'Apna Register', secret);
   const qrCode = await QRCode.toDataURL(otpauth);
 
   await redisClient.set(`totp_setup_${admin._id.toString()}`, secret, { EX: 300 });

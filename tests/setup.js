@@ -37,7 +37,7 @@ try {
 jest.mock('otplib', () => ({
   authenticator: {
     generateSecret: jest.fn(() => 'TESTSECRET'),
-    keyuri: jest.fn(() => 'otpauth://totp/ApnaManager:test?secret=TESTSECRET'),
+    keyuri: jest.fn(() => 'otpauth://totp/ApnaRegister:test?secret=TESTSECRET'),
     verify: jest.fn(({ token, secret }) => token === '123456'), // Mock verifier: accepts '123456'
   }
 }), { virtual: true });

@@ -32,7 +32,7 @@ const sendCredentialsEmail = async (toEmail, username, temporaryPassword) => {
   const msg = {
     to: toEmail,
     from: {
-      name: 'ApnaManager Admin',
+      name: 'Apna Register Admin',
       email: fromEmail,
     },
     subject: 'Your GuestGuard Account Credentials',
@@ -47,7 +47,7 @@ const sendCheckoutEmail = async (toEmail, hotelEmail, guestObject, pdfBuffer) =>
   const msg = {
     to: [toEmail, hotelEmail],
     from: {
-      name: `${hotelName} (via ApnaManager)`,
+      name: `${hotelName} (via Apna Register)`,
       email: fromEmail,
     },
     subject: `Your Checkout Receipt from ${hotelName}`,
@@ -68,7 +68,7 @@ const sendPasswordResetEmail = async (toEmail, username, resetUrl) => {
   const msg = {
     to: toEmail,
     from: {
-      name: 'ApnaManager Support',
+      name: 'Apna Register Support',
       email: fromEmail,
     },
     subject: 'Your Password Reset Link',
@@ -81,14 +81,14 @@ const sendPortalOTPEmail = async (toEmail, otp) => {
   const msg = {
     to: toEmail,
     from: {
-      name: 'ApnaManager Data Portal',
+      name: 'Apna Register Data Portal',
       email: fromEmail,
     },
     subject: 'Your Data Portal Verification Code',
     html: `
       <div style="font-family: Arial, sans-serif; max-width: 500px; margin: 0 auto; border: 1px solid #eaeaea; border-radius: 8px; overflow: hidden;">
         <div style="background-color: #2563eb; padding: 20px; text-align: center;">
-          <h2 style="color: #ffffff; margin: 0;">ApnaManager</h2>
+          <h2 style="color: #ffffff; margin: 0;">Apna Register</h2>
         </div>
         <div style="padding: 24px;">
           <p style="font-size: 16px; color: #333;">Hello,</p>

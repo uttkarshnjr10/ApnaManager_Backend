@@ -225,7 +225,7 @@ const downloadMyData = asyncHandler(async (req, res) => {
   doc.pipe(res);
 
   doc.fontSize(20).text('Your Personal Data Record', { align: 'center' });
-  doc.fontSize(12).text('Apna Manager', { align: 'center' });
+  doc.fontSize(12).text('Apna Register', { align: 'center' });
   doc.moveDown(2);
 
   doc.text(`Generated On: ${new Date().toLocaleString()}`);

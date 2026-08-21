@@ -9,7 +9,7 @@ const isTest = process.env.NODE_ENV === 'test';
 
 /**
  * Production format: structured JSON for log aggregators (Datadog, ELK, etc.)
- * Example: {"level":"info","message":"Server started","timestamp":"2026-04-11T18:30:00.000Z","service":"apnamanager"}
+ * Example: {"level":"info","message":"Server started","timestamp":"2026-04-11T18:30:00.000Z","service":"apna-register"}
  */
 const productionFormat = format.combine(
   format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
@@ -77,7 +77,7 @@ if (isProduction) {
 const logger = createLogger({
   level: isProduction ? 'info' : 'debug',
   format: isProduction ? productionFormat : developmentFormat,
-  defaultMeta: { service: 'apnamanager' },
+  defaultMeta: { service: 'apna-register' },
   transports: logTransports,
   // Prevent unhandled rejections from crashing the process
   exitOnError: false,

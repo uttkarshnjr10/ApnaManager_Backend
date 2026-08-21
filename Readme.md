@@ -1,4 +1,4 @@
-# ApnaManager Backend
+# Apna Register Backend
 
 > Enterprise-grade Hotel Management & Security Verification API — facilitating secure, real-time data exchange between Hotels and Law Enforcement.
 
@@ -29,7 +29,7 @@
 
 ## Overview
 
-ApnaManager digitizes hotel guest registration and automates police verification workflows. It replaces manual paperwork with a secure digital pipeline, enabling:
+Apna Register digitizes hotel guest registration and automates police verification workflows. It replaces manual paperwork with a secure digital pipeline, enabling:
 
 - **Hotel Managers** — Guest check-in with image capture, room management, and report generation.
 - **Police/Authorities** — Real-time dashboard for monitoring guest entries, watchlists, and alerts.
@@ -199,8 +199,8 @@ server/
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-username/apnamanager.git
-cd apnamanager/server
+git clone https://github.com/your-username/apnaregister.git
+cd apnaregister/server
 
 # Install dependencies
 npm install
@@ -248,7 +248,7 @@ Create a `.env` file in the `server/` directory:
 docker compose up --build -d
 
 # View logs
-docker compose logs -f apnamanager-backend
+docker compose logs -f apnaregister-backend
 
 # Stop all services
 docker compose down

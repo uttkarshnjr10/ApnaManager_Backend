@@ -90,11 +90,11 @@ const checkoutTemplate = (guest) => {
         
         <p style="margin-top: 30px;">
           Best regards,<br>
-          The ApnaManager Team
+          The Apna Register Team
         </p>
       </div>
       <div class="footer">
-        This is an automated receipt sent on behalf of ${hotelName} via ApnaManager.
+        This is an automated receipt sent on behalf of ${hotelName} via Apna Register.
       </div>
     </div>
   </body>

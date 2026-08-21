@@ -110,7 +110,7 @@ function startScheduledJobs() {
             
             await hotel.save();
 
-            const message = "Congratulations! Your hotel is now eligible for the Apna Manager Compliance Badge. Download it from Settings.";
+            const message = "Congratulations! Your hotel is now eligible for the Apna Register Compliance Badge. Download it from Settings.";
             
             await Notification.create({
               recipientUser: hotel._id,

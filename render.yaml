@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: ApnaManager
+    name: ApnaRegister
     env: node
     plan: free
     buildCommand: npm install

@@ -53,7 +53,7 @@ const generateBadgeSVG = asyncHandler(async (req, res) => {
     throw new ApiError(403, 'Badge not yet available');
   }
 
-  const verifyUrl = `https://apnamanager.in/verify/${hotel.verificationCode}`;
+  const verifyUrl = `https://apnaregister.in/verify/${hotel.verificationCode}`;
   
   // Generate QR code as data URL
   const qrDataUrl = await QRCode.toDataURL(verifyUrl, {
@@ -71,7 +71,7 @@ const generateBadgeSVG = asyncHandler(async (req, res) => {
   
   <!-- Header -->
   <text x="150" y="50" font-family="Arial, sans-serif" font-size="24" font-weight="bold" fill="#1D4ED8" text-anchor="middle">
-    APNA MANAGER
+    APNA REGISTER
   </text>
   <text x="150" y="75" font-family="Arial, sans-serif" font-size="14" fill="#64748B" text-anchor="middle">
     Verified Digital Registration
@@ -108,13 +108,13 @@ const generateBadgeSVG = asyncHandler(async (req, res) => {
     ${hotel.verificationCode}
   </text>
   <text x="25" y="355" font-family="Arial, sans-serif" font-size="9" fill="#94A3B8" text-anchor="start">
-    Scan QR to verify on Apna Manager
+    Scan QR to verify on Apna Register
   </text>
 </svg>
   `.trim();
 
   res.setHeader('Content-Type', 'image/svg+xml');
-  res.setHeader('Content-Disposition', 'attachment; filename="apnamanager-badge.svg"');
+  res.setHeader('Content-Disposition', 'attachment; filename="apnaregister-badge.svg"');
   res.send(svg);
 });
 
@@ -149,9 +149,9 @@ const verifyHotelBadge = asyncHandler(async (req, res) => {
     city: hotel.city,
     state: hotel.state,
     verifiedSince: hotel.verifiedAt,
-    platformName: "Apna Manager",
+    platformName: "Apna Register",
     compliance: "DPDP Act 2023 Compliant Digital Registration",
-    message: "This hotel is a verified partner using Apna Manager's compliant digital guest registration system."
+    message: "This hotel is a verified partner using Apna Register's compliant digital guest registration system."
   });
 });
 
