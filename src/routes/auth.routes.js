@@ -11,6 +11,7 @@ const {
   forceChangePassword,
   setupTOTP,
   verifyAndEnableTOTP,
+  disableTOTP,
   completeTOTPLogin
 } = require('../controllers/auth.controller');
 const { protect } = require('../middleware/auth.middleware');
@@ -27,6 +28,7 @@ router.post('/login', loginLimiter, loginUser);
 router.post('/admin/totp/login', loginLimiter, completeTOTPLogin);
 router.post('/admin/totp/setup', protect, setupTOTP);
 router.post('/admin/totp/enable', protect, verifyAndEnableTOTP);
+router.post('/admin/totp/disable', protect, disableTOTP);
 //router.post('/change-password', changePassword);
 router.post('/logout', protect, logoutUser);
 router.post('/forgot-password', forgotPassword);
