@@ -10,7 +10,6 @@ const {
   getHotelUsers,
   updateUserStatus,
   deleteUser,
-  getAccessLogs,
   getAIDailyReport,
 } = require('../controllers/user.controller');
 
@@ -24,7 +23,6 @@ router.put('/change-password', protect, updateUserPassword);
 // admin Only Routes
 router.post('/register', protect, authorize('Regional Admin'), registerUser);
 router.get('/admin/dashboard', protect, authorize('Regional Admin'), getAdminDashboardData);
-router.get('/admin/logs', protect, authorize('Regional Admin'), getAccessLogs);
 
 //  hotel users
 //  hotel users (Admin access)

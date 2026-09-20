@@ -586,37 +586,6 @@ const deleteUser = asyncHandler(async (req, res) => {
  * @param {Object} req.query - { searchTerm }
  * @returns {Promise<void>} List of access logs
  */
-const getAccessLogs = asyncHandler(async (req, res) => {
-  const { searchTerm } = req.query;
-  let query = {};
-
-  if (searchTerm) {
-    const regex = new RegExp(searchTerm, 'i');
-
-    // Find matching users
-    const [hotels, admins] = await Promise.all([
-      Hotel.find({ username: regex }).select('_id'),
-      RegionalAdmin.find({ username: regex }).select('_id'),
-    ]);
-
-    const userIds = [...hotels, ...admins].map((u) => u._id);
-
-    query.$or = [
-      { action: regex },
-      { reason: regex },
-      { searchQuery: regex },
-      { user: { $in: userIds } },
-    ];
-  }
-
-  // Fetch and populate logs
-  const logs = await AccessLog.find(query)
-    .populate('user', 'username role')
-    .sort({ timestamp: -1 })
-    .lean();
-
-  res.status(200).json(new ApiResponse(200, logs, 'Access logs retrieved successfully'));
-});
 
 module.exports = {
   registerUser,
@@ -628,5 +597,4 @@ module.exports = {
   getHotelUsers,
   updateUserStatus,
   deleteUser,
-  getAccessLogs,
 };
