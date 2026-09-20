@@ -466,7 +466,28 @@ const completeTOTPLogin = asyncHandler(async (req, res) => {
   res.status(200).json(new ApiResponse(200, userData, 'Login successful'));
 });
 
+
+const disableTOTP = asyncHandler(async (req, res) => {
+  if (req.user.role !== 'Regional Admin') {
+    throw new ApiError(403, 'Forbidden');
+  }
+  
+  const adminId = req.user._id.toString();
+  const admin = await RegionalAdmin.findById(adminId);
+  if (!admin) {
+    throw new ApiError(404, 'Admin not found');
+  }
+  
+  admin.totpEnabled = false;
+  admin.totpSecret = undefined;
+  admin.totpVerifiedAt = undefined;
+  await admin.save();
+  
+  res.status(200).json(new ApiResponse(200, null, '2FA disabled successfully'));
+});
+
 module.exports = {
+  disableTOTP,
   loginUser,
   logoutUser,
   forgotPassword,
