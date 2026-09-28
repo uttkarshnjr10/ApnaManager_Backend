@@ -194,6 +194,30 @@ const registerUser = asyncHandler(async (req, res) => {
 
   // Create user in appropriate collection
   if (role === 'Hotel') {
+    let ownerSignatureObj = details?.ownerSignature;
+    let hotelStampObj = details?.hotelStamp;
+    let aadhaarCardObj = details?.aadhaarCard;
+
+    // Handle new uploads if any
+    const pushUpload = (fileArray) => {
+      if (fileArray && fileArray[0]) {
+        return uploadToCloudinary(fileArray[0], 'hotel-inquiries');
+      }
+      return null;
+    };
+
+    if (req.files) {
+      const [sigRes, stampRes, aadhaarRes] = await Promise.all([
+        req.files.ownerSignature ? pushUpload(req.files.ownerSignature) : Promise.resolve(null),
+        req.files.hotelStamp ? pushUpload(req.files.hotelStamp) : Promise.resolve(null),
+        req.files.aadhaarCard ? pushUpload(req.files.aadhaarCard) : Promise.resolve(null)
+      ]);
+
+      if (sigRes) ownerSignatureObj = { public_id: sigRes.public_id, url: sigRes.url };
+      if (stampRes) hotelStampObj = { public_id: stampRes.public_id, url: stampRes.url };
+      if (aadhaarRes) aadhaarCardObj = { public_id: aadhaarRes.public_id, url: aadhaarRes.url };
+    }
+
     const hotelData = {
       ...commonData,
       hotelName: details?.hotelName,
@@ -208,9 +232,9 @@ const registerUser = asyncHandler(async (req, res) => {
       postOffice: details?.postOffice,
       localThana: details?.localThana,
       pinLocation: details?.pinLocation,
-      ownerSignature: req.files?.ownerSignature ? req.files.ownerSignature[0].path : details?.ownerSignature,
-      hotelStamp: req.files?.hotelStamp ? req.files.hotelStamp[0].path : details?.hotelStamp,
-      aadhaarCard: req.files?.aadhaarCard ? req.files.aadhaarCard[0].path : details?.aadhaarCard,
+      ownerSignature: ownerSignatureObj,
+      hotelStamp: hotelStampObj,
+      aadhaarCard: aadhaarCardObj,
     };
     user = await Hotel.create(hotelData);
 
