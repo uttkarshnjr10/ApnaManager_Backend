@@ -14,6 +14,7 @@ const {
 } = require('../controllers/user.controller');
 
 const { protect, authorize } = require('../middleware/auth.middleware');
+const { upload } = require('../middleware/upload.middleware');
 
 // for all users
 router.route('/profile').get(protect, getUserProfile).put(protect, updateUserProfile);
@@ -21,7 +22,7 @@ router.route('/profile').get(protect, getUserProfile).put(protect, updateUserPro
 router.put('/change-password', protect, updateUserPassword);
 
 // admin Only Routes
-router.post('/register', protect, authorize('Regional Admin'), registerUser);
+router.post('/register', protect, authorize('Regional Admin'), upload.fields([{ name: 'ownerSignature', maxCount: 1 }, { name: 'hotelStamp', maxCount: 1 }, { name: 'aadhaarCard', maxCount: 1 }]), registerUser);
 router.get('/admin/dashboard', protect, authorize('Regional Admin'), getAdminDashboardData);
 
 //  hotel users

@@ -160,7 +160,15 @@ const pickAllowedFields = (source, allowedFields) => {
  * @returns {Promise<void>} Created user credentials
  */
 const registerUser = asyncHandler(async (req, res) => {
-  const { username, email, role, details } = req.body;
+  const { username, email, role } = req.body;
+  let details = req.body.details;
+  if (typeof details === 'string') {
+    try {
+      details = JSON.parse(details);
+    } catch (err) {
+      throw new ApiError(400, 'Invalid details format');
+    }
+  }
 
   // Validation
   if (!username || !email || !role) {
@@ -200,9 +208,9 @@ const registerUser = asyncHandler(async (req, res) => {
       postOffice: details?.postOffice,
       localThana: details?.localThana,
       pinLocation: details?.pinLocation,
-      ownerSignature: details?.ownerSignature,
-      hotelStamp: details?.hotelStamp,
-      aadhaarCard: details?.aadhaarCard,
+      ownerSignature: req.files?.ownerSignature ? req.files.ownerSignature[0].path : details?.ownerSignature,
+      hotelStamp: req.files?.hotelStamp ? req.files.hotelStamp[0].path : details?.hotelStamp,
+      aadhaarCard: req.files?.aadhaarCard ? req.files.aadhaarCard[0].path : details?.aadhaarCard,
     };
     user = await Hotel.create(hotelData);
 
