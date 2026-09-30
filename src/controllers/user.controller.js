@@ -12,6 +12,7 @@ const { generateDailySummary } = require('../utils/ai-service');
 const crypto = require('crypto');
 const ApiError = require('../utils/api-error');
 const ApiResponse = require('../utils/api-response');
+const { uploadToCloudinary } = require('../utils/cloudinary');
 const NodeCache = require('node-cache');
 
 // Initialize Cache (1 hour TTL)
