@@ -6,15 +6,15 @@ const hotelInquirySchema = new mongoose.Schema(
     gstNumber: { type: String, required: true },
     ownerName: { type: String, required: true },
     email: { type: String, required: true, lowercase: true },
-    mobileNumber: { type: String, required: true },
+    phone: { type: String, required: true },
     // address
     nationality: { type: String, default: 'Indian' },
     state: { type: String, required: true },
-    district: { type: String, required: true },
+    city: { type: String, required: true },
     postOffice: { type: String, required: true },
     pinCode: { type: String, required: true },
     localThana: { type: String, required: true },
-    fullAddress: { type: String, required: true },
+    address: { type: String, required: true },
     pinLocation: { type: String },
 
     ownerSignature: {
