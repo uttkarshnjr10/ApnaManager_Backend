@@ -15,26 +15,30 @@ const uploadToCloudinary = (file, folder = 'guest-guard') => {
     // Create an async wrapper inside
     const runUpload = async () => {
       try {
-        // STEP 1: Process Image in Memory
-        let processedBuffer;
-        try {
-          processedBuffer = await sharp(file.buffer)
-            .resize(1280, 1280, {
-              fit: 'inside',
-              withoutEnlargement: true,
-            })
-            .toFormat('webp', { quality: 80 })
-            .toBuffer();
-        } catch (sharpError) {
-          console.error('❌ Sharp Processing Failed:', sharpError);
-          return reject(new Error(`Image processing failed: ${sharpError.message}`));
+        // STEP 1: Process Image in Memory (Skip if PDF)
+        let processedBuffer = file.buffer;
+        let isPdf = file.mimetype === 'application/pdf';
+        
+        if (!isPdf) {
+          try {
+            processedBuffer = await sharp(file.buffer)
+              .resize(1280, 1280, {
+                fit: 'inside',
+                withoutEnlargement: true,
+              })
+              .toFormat('webp', { quality: 80 })
+              .toBuffer();
+          } catch (sharpError) {
+            console.error('❌ Sharp Processing Failed:', sharpError);
+            return reject(new Error(`Image processing failed: ${sharpError.message}`));
+          }
         }
 
         // STEP 2: Upload Processed Buffer to Cloudinary
         const uploadStream = cloudinary.uploader.upload_stream(
           {
             folder: folder,
-            resource_type: 'image',
+            resource_type: isPdf ? 'raw' : 'image',
             type: 'authenticated',
           },
           (error, result) => {

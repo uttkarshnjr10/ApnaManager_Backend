@@ -17,7 +17,7 @@ const { protect, authorize } = require('../middleware/auth.middleware');
 const { hotelInquiryUpload } = require('../middleware/upload.middleware');
 
 // for all users
-router.route('/profile').get(protect, getUserProfile).put(protect, updateUserProfile);
+router.route('/profile').get(protect, getUserProfile).put(protect, hotelInquiryUpload, updateUserProfile);
 
 router.put('/change-password', protect, updateUserPassword);
 

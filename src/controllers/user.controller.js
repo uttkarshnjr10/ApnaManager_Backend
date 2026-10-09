@@ -330,9 +330,38 @@ const updateUserProfile = asyncHandler(async (req, res) => {
     user.email = nextEmail;
   }
 
+  let reqDetails = req.body.details;
+  if (typeof reqDetails === 'string') {
+    try {
+      reqDetails = JSON.parse(reqDetails);
+    } catch (e) {
+      throw new ApiError(400, 'Invalid details format');
+    }
+  }
+
   // Update role-specific details using allowlist only
   const allowedFields = PROFILE_EDITABLE_FIELDS[role] || [];
-  const safeDetails = pickAllowedFields(req.body.details, allowedFields);
+  const safeDetails = pickAllowedFields(reqDetails, allowedFields);
+
+  // Handle file uploads if any
+  if (req.files) {
+    const pushUpload = (fileArray) => {
+      if (fileArray && fileArray[0]) {
+        return uploadToCloudinary(fileArray[0], 'hotel-inquiries');
+      }
+      return null;
+    };
+    
+    const [sigRes, stampRes, aadhaarRes] = await Promise.all([
+      req.files.ownerSignature ? pushUpload(req.files.ownerSignature) : Promise.resolve(null),
+      req.files.hotelStamp ? pushUpload(req.files.hotelStamp) : Promise.resolve(null),
+      req.files.aadhaarCard ? pushUpload(req.files.aadhaarCard) : Promise.resolve(null)
+    ]);
+
+    if (sigRes) user.ownerSignature = { public_id: sigRes.public_id, url: sigRes.url };
+    if (stampRes) user.hotelStamp = { public_id: stampRes.public_id, url: stampRes.url };
+    if (aadhaarRes) user.aadhaarCard = { public_id: aadhaarRes.public_id, url: aadhaarRes.url };
+  }
 
   Object.keys(safeDetails).forEach((key) => {
     const value = safeDetails[key];
