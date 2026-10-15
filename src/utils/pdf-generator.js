@@ -1,4 +1,4 @@
-// src/utils/pdfGenerator.js
+// src/utils/pdf-generator.js
 const PDFDocument = require('pdfkit');
 const fs = require('fs');
 const path = require('path');
@@ -10,57 +10,57 @@ const logger = require('./logger');
 const { generateSignedUrl } = require('./cloudinary');
 
 // ============================================================
-// CONFIGURATION — Matching the professional template design
+// CONFIGURATION — Premium Compact Single-Page-First Design
 // ============================================================
 
 const CONFIG = {
-  size: 'A4',
-  margin: 30,
-  footerReserve: 50,
+  size: 'A4', // 595.28 x 841.89 pt
+  margin: 28,
+  footerReserve: 34,
   fonts: {
     bold: 'Helvetica-Bold',
     normal: 'Helvetica',
     italic: 'Helvetica-Oblique',
   },
   fontSizes: {
-    hotelName: 16,
-    subtitle: 8,
-    sectionTitle: 10,
+    hotelName: 15,
+    subtitle: 7.5,
+    sectionTitle: 8.5,
     body: 8,
-    label: 7.5,
-    small: 7,
+    label: 7,
+    small: 6.8,
     footer: 6.5,
-    watermark: 64,
-    badge: 7,
-    statusBar: 7.5,
+    watermark: 60,
+    badge: 6.8,
+    statusBar: 7.2,
   },
   colors: {
-    brand: '#1a3a5c',
-    brandLight: '#e8f0fe',
-    brandAccent: '#2563eb',
-    sectionBg: '#1a3a5c',
+    brand: '#0f2942',
+    brandLight: '#f0f5ff',
+    brandAccent: '#1d4ed8',
+    sectionBg: '#16324f',
     sectionText: '#ffffff',
-    textPrimary: '#1a1a2e',
-    textSecondary: '#4a5568',
-    textMuted: '#718096',
-    border: '#d1d5db',
-    borderLight: '#e5e7eb',
-    divider: '#e2e8f0',
+    textPrimary: '#0f172a',
+    textSecondary: '#334155',
+    textMuted: '#64748b',
+    border: '#cbd5e1',
+    borderLight: '#e2e8f0',
+    divider: '#cbd5e1',
     cardBg: '#ffffff',
+    cardHeaderBg: '#f8fafc',
     cellBg: '#f8fafc',
     successGreen: '#16a34a',
     successBg: '#dcfce7',
     verifiedBadge: '#15803d',
-    placeholderBg: '#f0f4f8',
-    watermark: '#a0aec0',
-    stampBorder: '#94a3b8',
+    placeholderBg: '#f8fafc',
+    watermark: '#94a3b8',
     declarationBg: '#f8fafc',
   },
   image: {
     timeoutMs: 8000,
     maxBytes: 5 * 1024 * 1024,
-    maxDimension: 1200,
-    quality: 82,
+    maxDimension: 1000,
+    quality: 84,
   },
 };
 
@@ -125,19 +125,9 @@ const calculateAge = (dob) => {
   return age >= 0 ? age : null;
 };
 
-const formatDobWithAge = (dob) => {
-  const dateStr = formatDate(dob);
-  if (dateStr === 'N/A') return dateStr;
-  const age = calculateAge(dob);
-  if (age !== null) {
-    return `${dateStr} (${age} Yrs)`;
-  }
-  return dateStr;
-};
-
 const formatDobWithAgeAndGender = (dob, gender) => {
   const dateStr = formatDate(dob);
-  if (dateStr === 'N/A') return dateStr;
+  if (dateStr === 'N/A') return safeText(gender, 'N/A');
   const age = calculateAge(dob);
   const parts = [dateStr];
   if (age !== null) parts.push(`(${age} Yrs)`);
@@ -148,11 +138,11 @@ const formatDobWithAgeAndGender = (dob, gender) => {
 const maskIdNumber = (idNumber) => {
   const value = safeText(idNumber, 'N/A');
   if (value === 'N/A') return value;
-  if (value.length <= 6) return value;
-  const prefix = value.slice(0, 4);
-  const suffix = value.slice(-4);
-  const masked = 'X'.repeat(Math.max(0, value.length - 8));
-  return `${prefix}-${masked}-${suffix}`;
+  const clean = value.replace(/\s+/g, '');
+  if (clean.length <= 6) return clean;
+  const prefix = clean.slice(0, 4);
+  const suffix = clean.slice(-4);
+  return `${prefix}-XXXX-${suffix}`;
 };
 
 const buildAddress = (guest) => {
@@ -167,7 +157,9 @@ const buildHotelAddress = (hotel) => {
   const parts = [hotel?.address, hotel?.city, hotel?.state, hotel?.pinCode].filter(
     (part) => part && String(part).trim()
   );
-  return parts.join(', ') || '';
+  // Deduplicate adjacent identical city/address parts (e.g. "Patna, Patna")
+  const uniqueParts = parts.filter((item, pos, arr) => pos === 0 || item.toLowerCase() !== arr[pos - 1].toLowerCase());
+  return uniqueParts.join(', ') || '';
 };
 
 const buildBookingRef = (guest) => {
@@ -179,23 +171,28 @@ const buildBookingRef = (guest) => {
   return `GP-${crypto.createHash('sha256').update(source).digest('hex').slice(0, 12).toUpperCase()}`;
 };
 
+const getAllAccompanyingGuests = (guest) => {
+  const adults = Array.isArray(guest?.accompanyingGuests?.adults)
+    ? guest.accompanyingGuests.adults.map((g) => ({ ...g, category: 'Adult' }))
+    : [];
+  const children = Array.isArray(guest?.accompanyingGuests?.children)
+    ? guest.accompanyingGuests.children.map((g) => ({ ...g, category: 'Child' }))
+    : [];
+  return [...adults, ...children];
+};
+
 const getOccupancyText = (guest) => {
   const adults = Array.isArray(guest?.accompanyingGuests?.adults) ? guest.accompanyingGuests.adults.length : 0;
   const children = Array.isArray(guest?.accompanyingGuests?.children) ? guest.accompanyingGuests.children.length : 0;
-  const totalPeople = 1 + adults + children; // primary + accompanying
-  const parts = [];
-  parts.push(`${totalPeople} ${totalPeople === 1 ? 'Person' : 'People'}`);
-  if (adults > 0 || children > 0) {
-    const detail = [];
-    detail.push(`${1 + adults} Adults`);
-    if (children > 0) detail.push(`${children} Children`);
-    parts.push(`(${detail.join(', ')})`);
-  }
-  return parts.join(' ');
+  const totalPeople = 1 + adults + children;
+  if (adults === 0 && children === 0) return '1 Person (Single Occupant)';
+  const detail = [`${1 + adults} Adult${1 + adults > 1 ? 's' : ''}`];
+  if (children > 0) detail.push(`${children} Child${children > 1 ? 'ren' : ''}`);
+  return `${totalPeople} People (${detail.join(', ')})`;
 };
 
 // ============================================================
-// PDF DOCUMENT SETUP
+// PDF DOCUMENT SETUP & PAGE MANAGEMENT
 // ============================================================
 
 const getPageArea = (doc) => ({
@@ -210,7 +207,9 @@ const ensureSpace = (doc, requiredHeight = 40) => {
   const maxY = doc.page.height - CONFIG.margin - CONFIG.footerReserve;
   if (doc.y + requiredHeight > maxY) {
     doc.addPage();
+    return true;
   }
+  return false;
 };
 
 const createPdfDoc = () => {
@@ -222,7 +221,7 @@ const createPdfDoc = () => {
     info: {
       Title: 'Guest Checkout Receipt',
       Author: 'Apna Register',
-      Subject: 'Official guest checkout summary',
+      Subject: 'Official Guest Checkout & Digital KYC Summary',
       Producer: 'Apna Register PDF Service',
     },
   });
@@ -252,11 +251,11 @@ const drawWatermark = (doc) => {
   doc.fillColor(CONFIG.colors.watermark);
   doc.font(CONFIG.fonts.bold).fontSize(CONFIG.fontSizes.watermark);
 
-  const textWidth = doc.widthOfString('Apna Register');
+  const textWidth = doc.widthOfString('APNA REGISTER');
   const textX = centerX - textWidth / 2;
 
   doc.rotate(-35, { origin: [centerX, centerY] });
-  doc.text('Apna Register', textX, centerY - 20, { lineBreak: false });
+  doc.text('APNA REGISTER', textX, centerY - 20, { lineBreak: false });
   doc.restore();
 
   doc.opacity(1);
@@ -271,7 +270,7 @@ const registerPageDecorators = (doc) => {
 };
 
 // ============================================================
-// IMAGE HANDLING — Secure signed URL flow
+// IMAGE HANDLING — Supports Signed URLs, Direct URLs & Base64
 // ============================================================
 
 const normalizeImageField = (field) => {
@@ -282,355 +281,552 @@ const normalizeImageField = (field) => {
 };
 
 const isHttpUrl = (value) => typeof value === 'string' && /^https?:\/\//i.test(value);
+const isDataUri = (value) => typeof value === 'string' && /^data:image\/[a-zA-Z+]+;base64,/i.test(value);
 
 const getImageCandidates = (field) => {
   const normalized = normalizeImageField(field);
   const urls = [];
+
   if (normalized.public_id) {
     try {
       const signedUrl = generateSignedUrl(normalized.public_id);
       if (isHttpUrl(signedUrl)) urls.push(signedUrl);
     } catch (error) {
-      logger.warn(`Failed to generate signed URL: ${error.message}`);
+      logger.warn(`Failed to generate signed URL for ${normalized.public_id}: ${error.message}`);
     }
   }
-  if (isHttpUrl(normalized.url)) urls.push(normalized.url);
+
+  // Also include direct URL as fallback (critical if hotelStamp/ownerSignature are uploaded as 'upload' instead of 'authenticated')
+  if (isHttpUrl(normalized.url) || isDataUri(normalized.url)) {
+    urls.push(normalized.url);
+  }
+
   return [...new Set(urls)];
 };
 
-const fetchAndOptimizeImage = async (url) => {
-  const response = await axios.get(url, {
+const optimizeImageBuffer = async (inputBuffer, preserveTransparency = false) => {
+  if (!inputBuffer || !inputBuffer.length) throw new Error('Empty image buffer');
+
+  let pipeline = sharp(inputBuffer)
+    .rotate()
+    .resize(CONFIG.image.maxDimension, CONFIG.image.maxDimension, {
+      fit: 'inside',
+      withoutEnlargement: true,
+    });
+
+  if (preserveTransparency) {
+    // Flatten transparent PNGs (like signatures & stamps) onto white so they never render as black boxes
+    pipeline = pipeline.flatten({ background: { r: 255, g: 255, b: 255 } }).png({ compressionLevel: 8 });
+  } else {
+    pipeline = pipeline.flatten({ background: { r: 255, g: 255, b: 255 } }).jpeg({ quality: CONFIG.image.quality });
+  }
+
+  return pipeline.toBuffer();
+};
+
+const fetchAndOptimizeImage = async (candidate, preserveTransparency = false) => {
+  if (isDataUri(candidate)) {
+    const base64Data = candidate.split(',')[1];
+    const buffer = Buffer.from(base64Data, 'base64');
+    return optimizeImageBuffer(buffer, preserveTransparency);
+  }
+
+  const response = await axios.get(candidate, {
     responseType: 'arraybuffer',
     timeout: CONFIG.image.timeoutMs,
     maxContentLength: CONFIG.image.maxBytes,
     maxBodyLength: CONFIG.image.maxBytes,
     validateStatus: (status) => status >= 200 && status < 300,
   });
-  const contentType = String(response.headers?.['content-type'] || '').toLowerCase();
-  if (contentType && !contentType.startsWith('image/')) {
-    throw new Error(`Unexpected content type: ${contentType}`);
-  }
+
   const inputBuffer = Buffer.from(response.data);
-  if (!inputBuffer.length) throw new Error('Empty image data');
-  return sharp(inputBuffer)
-    .rotate()
-    .resize(CONFIG.image.maxDimension, CONFIG.image.maxDimension, { fit: 'inside', withoutEnlargement: true })
-    .jpeg({ quality: CONFIG.image.quality })
-    .toBuffer();
+  return optimizeImageBuffer(inputBuffer, preserveTransparency);
 };
 
-const loadImageBuffer = async (field, label) => {
+const loadImageBuffer = async (field, label, preserveTransparency = false) => {
   const candidates = getImageCandidates(field);
   if (!candidates.length) return null;
+
   for (const candidate of candidates) {
-    try { return await fetchAndOptimizeImage(candidate); }
-    catch (error) { logger.warn(`Unable to load ${label} image: ${error.message}`); }
+    try {
+      return await fetchAndOptimizeImage(candidate, preserveTransparency);
+    } catch (error) {
+      logger.warn(`Unable to load ${label} image from candidate: ${error.message}`);
+    }
   }
   return null;
 };
 
 const loadReceiptImages = async (guest) => {
-  const [livePhoto, idImageFront, idImageBack, ownerSignature, hotelStamp] = await Promise.all([
-    loadImageBuffer(guest?.livePhoto, 'live photo'),
-    loadImageBuffer(guest?.idImageFront, 'ID front'),
-    loadImageBuffer(guest?.idImageBack, 'ID back'),
-    loadImageBuffer(guest?.hotel?.ownerSignature, 'owner signature'),
-    loadImageBuffer(guest?.hotel?.hotelStamp, 'hotel stamp'),
-  ]);
+  const allAccompanying = getAllAccompanyingGuests(guest);
 
-  // Load accompanying guest images
-  const loadAccImages = async (guests) => {
-    if (!guests || !Array.isArray(guests)) return [];
-    return Promise.all(
-      guests.map(async (accGuest) => {
-        const [accLivePhoto, accIdFront, accIdBack] = await Promise.all([
-          loadImageBuffer(accGuest.livePhoto, `${accGuest.name} live photo`),
-          loadImageBuffer(accGuest.idImageFront, `${accGuest.name} ID front`),
-          loadImageBuffer(accGuest.idImageBack, `${accGuest.name} ID back`),
-        ]);
-        return { name: accGuest.name, images: { livePhoto: accLivePhoto, idImageFront: accIdFront, idImageBack: accIdBack } };
-      })
-    );
+  const [livePhoto, idImageFront, idImageBack, ownerSignature, hotelStamp, guestSignature, accompanyingImages] =
+    await Promise.all([
+      loadImageBuffer(guest?.livePhoto, 'primary live photo', false),
+      loadImageBuffer(guest?.idImageFront, 'primary ID front', false),
+      loadImageBuffer(guest?.idImageBack, 'primary ID back', false),
+      loadImageBuffer(guest?.hotel?.ownerSignature, 'owner signature', true),
+      loadImageBuffer(guest?.hotel?.hotelStamp, 'hotel stamp', true),
+      loadImageBuffer(guest?.consentRecord?.signatureImage, 'guest consent signature', true),
+      Promise.all(
+        allAccompanying.map(async (accGuest, idx) => {
+          const [accLive, accFront, accBack] = await Promise.all([
+            loadImageBuffer(accGuest.livePhoto, `guest ${idx + 2} live photo`, false),
+            loadImageBuffer(accGuest.idImageFront, `guest ${idx + 2} ID front`, false),
+            loadImageBuffer(accGuest.idImageBack, `guest ${idx + 2} ID back`, false),
+          ]);
+          return {
+            name: safeText(accGuest.name, `Guest #${idx + 2}`),
+            category: accGuest.category || 'Co-Occupant',
+            livePhoto: accLive,
+            idImageFront: accFront,
+            idImageBack: accBack,
+          };
+        })
+      ),
+    ]);
+
+  return {
+    livePhoto,
+    idImageFront,
+    idImageBack,
+    ownerSignature,
+    hotelStamp,
+    guestSignature,
+    accompanyingGuests: accompanyingImages,
   };
-
-  const accompanyingAdults = await loadAccImages(guest?.accompanyingGuests?.adults);
-  const accompanyingChildren = await loadAccImages(guest?.accompanyingGuests?.children);
-
-  return { livePhoto, idImageFront, idImageBack, ownerSignature, hotelStamp, accompanyingGuests: [...accompanyingAdults, ...accompanyingChildren] };
 };
 
 // ============================================================
-// SECTION 0: HEADER — Logo + Hotel Name + Contact
+// SECTION 0: HEADER — Logo + Hotel Name + Contact + GST
 // ============================================================
 
-const drawHeader = (doc, guest, bookingRef) => {
+const drawHeader = (doc, guest) => {
   const area = getPageArea(doc);
   const headerY = area.top;
 
-  // ── Left: Logo ──
+  // Left: Apna Register Logo
   let logoEndX = area.left;
   if (fs.existsSync(LOGO_PATH)) {
     try {
-      doc.image(LOGO_PATH, area.left, headerY, { fit: [80, 50], align: 'center', valign: 'center' });
-      logoEndX = area.left + 88;
+      doc.image(LOGO_PATH, area.left, headerY, { fit: [78, 38], align: 'left', valign: 'center' });
+      logoEndX = area.left + 86;
     } catch (error) {
       logger.warn(`Unable to load logo: ${error.message}`);
     }
   }
 
-  // ── Right: Hotel Name + Details ──
-  const hotelName = safeText(guest?.hotel?.hotelName || guest?.hotel?.username, 'Hotel').toUpperCase();
+  // Right: Hotel Name & Metadata
+  const hotelName = safeText(guest?.hotel?.hotelName || guest?.hotel?.username, 'HOTEL').toUpperCase();
   const hotelAddress = buildHotelAddress(guest?.hotel);
   const hotelPhone = safeText(guest?.hotel?.phone, '');
   const gstNumber = safeText(guest?.hotel?.gstNumber, '');
 
-  doc.font(CONFIG.fonts.bold).fontSize(CONFIG.fontSizes.hotelName).fillColor(CONFIG.colors.brand)
-    .text(hotelName, logoEndX, headerY + 2, { width: area.right - logoEndX, align: 'right', lineBreak: false });
+  const rightBoxWidth = area.right - logoEndX;
 
-  // Sub-details line
+  doc
+    .font(CONFIG.fonts.bold)
+    .fontSize(CONFIG.fontSizes.hotelName)
+    .fillColor(CONFIG.colors.brand)
+    .text(hotelName, logoEndX, headerY + 1, {
+      width: rightBoxWidth,
+      align: 'right',
+      lineBreak: false,
+    });
+
   const subParts = [];
   if (hotelAddress) subParts.push(hotelAddress);
-  if (hotelPhone) subParts.push(`Desk: ${hotelPhone}`);
+  if (hotelPhone && hotelPhone !== 'N/A') subParts.push(`Desk: ${hotelPhone}`);
   if (gstNumber && gstNumber !== 'N/A') subParts.push(`GSTIN: ${gstNumber}`);
-  
+
   if (subParts.length > 0) {
-    doc.font(CONFIG.fonts.normal).fontSize(CONFIG.fontSizes.small).fillColor(CONFIG.colors.textSecondary)
-      .text(subParts.join(' | '), logoEndX, headerY + 20, { width: area.right - logoEndX, align: 'right' });
+    doc
+      .font(CONFIG.fonts.normal)
+      .fontSize(CONFIG.fontSizes.subtitle)
+      .fillColor(CONFIG.colors.textSecondary)
+      .text(subParts.join('  •  '), logoEndX, headerY + 19, {
+        width: rightBoxWidth,
+        align: 'right',
+        lineBreak: false,
+      });
   }
 
-  // ── Separator ──
-  const sepY = headerY + 42;
-  doc.moveTo(area.left, sepY).lineTo(area.right, sepY).strokeColor(CONFIG.colors.border).lineWidth(0.5).stroke();
-  doc.y = sepY + 4;
+  // Bottom border line
+  const sepY = headerY + 38;
+  doc
+    .moveTo(area.left, sepY)
+    .lineTo(area.right, sepY)
+    .strokeColor(CONFIG.colors.brand)
+    .lineWidth(1)
+    .stroke();
+
+  doc.y = sepY + 6;
 };
 
 // ============================================================
-// STATUS BAR — Verified badge + Booking Ref + Customer ID + Timestamp
+// STATUS BAR — Verified Pill + Booking Ref + Customer ID + Timestamp
 // ============================================================
 
 const drawStatusBar = (doc, guest, bookingRef) => {
   const area = getPageArea(doc);
   const barY = doc.y;
-  const barHeight = 22;
-
-  // Background bar
-  doc.roundedRect(area.left, barY, area.contentWidth, barHeight, 4)
-    .fill(CONFIG.colors.cellBg);
-  doc.roundedRect(area.left, barY, area.contentWidth, barHeight, 4)
-    .lineWidth(0.5).strokeColor(CONFIG.colors.borderLight).stroke();
-
-  // ── Green verified badge ──
-  const badgeText = `✓ VERIFIED & ${safeText(guest?.status, 'CHECKED-OUT').toUpperCase()}`;
-  const badgeWidth = doc.font(CONFIG.fonts.bold).fontSize(CONFIG.fontSizes.badge).widthOfString(badgeText) + 16;
-  const badgeX = area.left + 8;
-  const badgeY = barY + 4;
-
-  doc.roundedRect(badgeX, badgeY, badgeWidth, 14, 3).fill(CONFIG.colors.successBg);
-  doc.font(CONFIG.fonts.bold).fontSize(CONFIG.fontSizes.badge).fillColor(CONFIG.colors.verifiedBadge)
-    .text(badgeText, badgeX + 8, badgeY + 3, { lineBreak: false });
-
-  // ── Meta items ──
-  const metaItems = [
-    { label: 'Booking Ref:', value: bookingRef },
-    { label: 'Customer ID:', value: safeText(guest?.customerId) },
-    { label: 'Timestamp:', value: formatDateTime(new Date()) },
-  ];
-
-  let metaX = badgeX + badgeWidth + 20;
-  metaItems.forEach((item) => {
-    const labelW = doc.font(CONFIG.fonts.bold).fontSize(CONFIG.fontSizes.statusBar).widthOfString(item.label);
-    doc.font(CONFIG.fonts.bold).fontSize(CONFIG.fontSizes.statusBar).fillColor(CONFIG.colors.textMuted)
-      .text(item.label, metaX, barY + 6, { lineBreak: false });
-    
-    const valW = doc.font(CONFIG.fonts.normal).fontSize(CONFIG.fontSizes.statusBar).widthOfString(item.value);
-    doc.font(CONFIG.fonts.normal).fontSize(CONFIG.fontSizes.statusBar).fillColor(CONFIG.colors.textPrimary)
-      .text(item.value, metaX + labelW + 4, barY + 6, { lineBreak: false });
-    
-    metaX += labelW + valW + 18;
-  });
-
-  doc.y = barY + barHeight + 10;
-};
-
-// ============================================================
-// SECTION TITLE — Dark bar with white text (matching template)
-// ============================================================
-
-const drawSectionTitle = (doc, number, title) => {
-  ensureSpace(doc, 30);
-  const area = getPageArea(doc);
-  const barY = doc.y;
   const barHeight = 20;
 
-  // Dark navy background
-  doc.roundedRect(area.left, barY, area.contentWidth, barHeight, 3)
-    .fill(CONFIG.colors.sectionBg);
+  doc
+    .roundedRect(area.left, barY, area.contentWidth, barHeight, 3)
+    .fillAndStroke(CONFIG.colors.cellBg, CONFIG.colors.borderLight);
 
-  // Section text
-  const sectionText = `${number}. ${title.toUpperCase()}`;
-  doc.font(CONFIG.fonts.bold).fontSize(CONFIG.fontSizes.sectionTitle).fillColor(CONFIG.colors.sectionText)
-    .text(sectionText, area.left + 10, barY + 5, { width: area.contentWidth - 20, lineBreak: false });
+  // Left: Verified & Checked-Out Pill
+  const statusStr = safeText(guest?.status, 'CHECKED-OUT').toUpperCase();
+  const badgeText = `✓ VERIFIED & ${statusStr}`;
+  doc.font(CONFIG.fonts.bold).fontSize(CONFIG.fontSizes.badge);
+  const badgeWidth = doc.widthOfString(badgeText) + 14;
+  const badgeX = area.left + 6;
+  const badgeY = barY + 3.5;
+
+  doc.roundedRect(badgeX, badgeY, badgeWidth, 13, 2.5).fill(CONFIG.colors.successBg);
+  doc
+    .fillColor(CONFIG.colors.verifiedBadge)
+    .text(badgeText, badgeX + 7, badgeY + 2.8, { lineBreak: false });
+
+  // Right-aligned Meta Info so it never collides
+  const checkoutOrNow = guest?.stayDetails?.checkOut || new Date();
+  const metaText = `Booking Ref: ${bookingRef}   |   Customer ID: ${safeText(guest?.customerId)}   |   Timestamp: ${formatDateTime(checkoutOrNow)}`;
+
+  const metaStartX = badgeX + badgeWidth + 8;
+  doc
+    .font(CONFIG.fonts.bold)
+    .fontSize(CONFIG.fontSizes.statusBar)
+    .fillColor(CONFIG.colors.textSecondary)
+    .text(metaText, metaStartX, barY + 6, {
+      width: area.right - metaStartX - 8,
+      align: 'right',
+      lineBreak: false,
+    });
 
   doc.y = barY + barHeight + 8;
 };
 
 // ============================================================
-// BORDERED CELL — Individual data cell with label and value
+// SECTION TITLE — Prevents Orphaned Headers via minContentHeight
 // ============================================================
 
-const drawBorderedCell = (doc, x, y, w, h, label, value) => {
-  // Cell border
-  doc.rect(x, y, w, h).lineWidth(0.5).strokeColor(CONFIG.colors.border).stroke();
+const drawSectionTitle = (doc, number, title, minContentHeight = 60) => {
+  const barHeight = 17;
+  // Ensure space for BOTH the section bar AND the minimum content height below it
+  ensureSpace(doc, barHeight + 6 + minContentHeight);
 
-  // Label
-  doc.font(CONFIG.fonts.bold).fontSize(6.5).fillColor(CONFIG.colors.textMuted)
-    .text(label.toUpperCase(), x + 6, y + 4, { width: w - 12, lineBreak: false });
+  const area = getPageArea(doc);
+  const barY = doc.y;
 
-  // Value
-  doc.font(CONFIG.fonts.bold).fontSize(CONFIG.fontSizes.body).fillColor(CONFIG.colors.textPrimary)
-    .text(safeText(value), x + 6, y + 14, { width: w - 12 });
+  doc
+    .roundedRect(area.left, barY, area.contentWidth, barHeight, 2.5)
+    .fill(CONFIG.colors.sectionBg);
+
+  const sectionText = `${number}. ${title.toUpperCase()}`;
+  doc
+    .font(CONFIG.fonts.bold)
+    .fontSize(CONFIG.fontSizes.sectionTitle)
+    .fillColor(CONFIG.colors.sectionText)
+    .text(sectionText, area.left + 8, barY + 4, {
+      width: area.contentWidth - 16,
+      lineBreak: false,
+    });
+
+  doc.y = barY + barHeight + 5;
 };
 
 // ============================================================
 // SECTION 1: STAY ALLOCATION & BOOKING DETAILS
 // ============================================================
 
+const drawStayCell = (doc, x, y, w, h, label, value, highlight = false) => {
+  doc
+    .rect(x, y, w, h)
+    .fillAndStroke(highlight ? CONFIG.colors.brandLight : CONFIG.colors.cardBg, CONFIG.colors.border);
+
+  doc
+    .font(CONFIG.fonts.bold)
+    .fontSize(6.2)
+    .fillColor(CONFIG.colors.textMuted)
+    .text(label.toUpperCase(), x + 6, y + 4, { width: w - 12, lineBreak: false });
+
+  doc
+    .font(CONFIG.fonts.bold)
+    .fontSize(CONFIG.fontSizes.body)
+    .fillColor(highlight ? CONFIG.colors.brand : CONFIG.colors.textPrimary)
+    .text(safeText(value), x + 6, y + 13, { width: w - 12, lineBreak: false });
+};
+
 const drawStaySection = (doc, guest) => {
-  drawSectionTitle(doc, '1', 'STAY ALLOCATION & BOOKING DETAILS');
+  const rowH = 26;
+  drawSectionTitle(doc, '1', 'STAY ALLOCATION & BOOKING DETAILS', rowH * 2 + 8);
+
   const area = getPageArea(doc);
   const startY = doc.y;
-  const cellHeight = 34;
   const colW = area.contentWidth / 4;
 
+  const actualCheckout = guest?.stayDetails?.checkOut
+    ? formatDateTime(guest.stayDetails.checkOut)
+    : formatDateTime(guest?.stayDetails?.expectedCheckout);
+
+  const checkoutLabel = guest?.stayDetails?.checkOut ? 'Actual Check-Out' : 'Expected Check-Out';
+
+  // Row 1: Room | Purpose | Check-In | Check-Out
+  drawStayCell(doc, area.left, startY, colW, rowH, 'Allocated Room', `Room No. ${safeText(guest?.stayDetails?.roomNumber)}`, true);
+  drawStayCell(doc, area.left + colW, startY, colW, rowH, 'Purpose of Visit', safeText(guest?.stayDetails?.purposeOfVisit));
+  drawStayCell(doc, area.left + colW * 2, startY, rowH ? colW : colW, rowH, 'Check-In Date/Time', formatDateTime(guest?.stayDetails?.checkIn));
+  drawStayCell(doc, area.left + colW * 3, startY, colW, rowH, checkoutLabel, actualCheckout);
+
+  // Row 2: Occupancy | Expected Check-Out | Nationality | Verification Status
+  const row2Y = startY + rowH;
+  const halfW = area.contentWidth / 2;
+  drawStayCell(doc, area.left, row2Y, halfW, rowH, 'Total Occupancy', getOccupancyText(guest));
+  drawStayCell(
+    doc,
+    area.left + halfW,
+    row2Y,
+    halfW,
+    rowH,
+    'Expected Check-Out Schedule',
+    formatDateTime(guest?.stayDetails?.expectedCheckout)
+  );
+
+  doc.y = row2Y + rowH + 8;
+};
+
+// ============================================================
+// SECTION 2: GUEST DETAILS (Dynamic Full-Width or 2-Column Cards)
+// ============================================================
+
+const drawKeyValueRow = (doc, x, y, labelW, colW, label, value) => {
+  doc
+    .font(CONFIG.fonts.bold)
+    .fontSize(CONFIG.fontSizes.label)
+    .fillColor(CONFIG.colors.textMuted)
+    .text(`${label}:`, x, y, { width: labelW, lineBreak: false });
+
+  doc
+    .font(CONFIG.fonts.normal)
+    .fontSize(CONFIG.fontSizes.body)
+    .fillColor(CONFIG.colors.textPrimary)
+    .text(safeText(value), x + labelW + 4, y, {
+      width: colW - labelW - 8,
+      lineBreak: false,
+      ellipsis: true,
+    });
+};
+
+/**
+ * Renders a single full-width compact 2-column card when there is ONLY 1 guest,
+ * saving ~55pt of vertical height while looking crisp and balanced.
+ */
+const drawSinglePrimaryGuestCard = (doc, guest, x, y, w) => {
+  const headerH = 18;
+  const rowH = 13.5;
+  const pad = 8;
+  const bodyRows = 4; // 4 rows in 2-column layout
+  const totalH = headerH + pad + bodyRows * rowH + 6;
+
+  // Outer card
+  doc.roundedRect(x, y, w, totalH, 3).fillAndStroke(CONFIG.colors.cardBg, CONFIG.colors.border);
+
+  // Card Header
+  doc.rect(x, y, w, headerH).fillAndStroke(CONFIG.colors.cardHeaderBg, CONFIG.colors.border);
+  doc
+    .font(CONFIG.fonts.bold)
+    .fontSize(CONFIG.fontSizes.body)
+    .fillColor(CONFIG.colors.brand)
+    .text('GUEST #01: PRIMARY GUEST (LEAD OCCUPANT)', x + pad, y + 5, { lineBreak: false });
+
+  // Verified Badge
+  const badgeText = '✓ Primary KYC Verified';
+  const badgeW = doc.font(CONFIG.fonts.bold).fontSize(6.2).widthOfString(badgeText) + 12;
+  doc.roundedRect(x + w - badgeW - pad, y + 3, badgeW, 12, 2.5).fill(CONFIG.colors.successBg);
+  doc
+    .fillColor(CONFIG.colors.verifiedBadge)
+    .text(badgeText, x + w - badgeW - pad + 6, y + 5.5, { lineBreak: false });
+
+  // 2-Column Inner Grid
+  const colW = (w - pad * 3) / 2;
+  const leftX = x + pad;
+  const rightX = x + pad * 2 + colW;
+  const labelW = 68;
+  let curY = y + headerH + 6;
+
+  // Vertical subtle divider between left & right columns
+  doc
+    .moveTo(x + w / 2, y + headerH + 4)
+    .lineTo(x + w / 2, y + totalH - 4)
+    .strokeColor(CONFIG.colors.borderLight)
+    .lineWidth(0.5)
+    .stroke();
+
   // Row 1
-  drawBorderedCell(doc, area.left, startY, colW, cellHeight, 'Allocated Room', `Room No. ${safeText(guest?.stayDetails?.roomNumber)}`);
-  drawBorderedCell(doc, area.left + colW, startY, colW, cellHeight, 'Room Category', 'Standard');
-  drawBorderedCell(doc, area.left + colW * 2, startY, colW, cellHeight, 'Expected Check-Out', formatDateTime(guest?.stayDetails?.expectedCheckout));
-  drawBorderedCell(doc, area.left + colW * 3, startY, colW, cellHeight, 'Check-In Date/Time', formatDateTime(guest?.stayDetails?.checkIn));
+  drawKeyValueRow(doc, leftX, curY, labelW, colW, 'FULL NAME', guest?.primaryGuest?.name);
+  drawKeyValueRow(doc, rightX, curY, labelW, colW, 'ID DOCUMENT', `${safeText(guest?.idType)} (${maskIdNumber(guest?.idNumber)})`);
+  curY += rowH;
 
   // Row 2
-  const row2Y = startY + cellHeight;
-  const halfW = area.contentWidth / 2;
-  drawBorderedCell(doc, area.left, row2Y, halfW, cellHeight, 'Purpose of Visit', safeText(guest?.stayDetails?.purposeOfVisit));
-  drawBorderedCell(doc, area.left + halfW, row2Y, halfW, cellHeight, 'Total Occupancy', getOccupancyText(guest));
+  drawKeyValueRow(doc, leftX, curY, labelW, colW, 'MOBILE NO', guest?.primaryGuest?.phone);
+  drawKeyValueRow(doc, rightX, curY, labelW, colW, 'EMAIL ID', guest?.primaryGuest?.email);
+  curY += rowH;
 
-  doc.y = row2Y + cellHeight + 10;
+  // Row 3
+  drawKeyValueRow(
+    doc,
+    leftX,
+    curY,
+    labelW,
+    colW,
+    'DOB / GENDER',
+    formatDobWithAgeAndGender(guest?.primaryGuest?.dob, guest?.primaryGuest?.gender)
+  );
+  drawKeyValueRow(
+    doc,
+    rightX,
+    curY,
+    labelW,
+    colW,
+    'NATIONALITY',
+    guest?.primaryGuest?.nationality || guest?.hotel?.nationality || 'Indian'
+  );
+  curY += rowH;
+
+  // Row 4: Full-width Address
+  drawKeyValueRow(doc, leftX, curY, labelW, w - pad * 2, 'ADDRESS', buildAddress(guest));
+
+  return totalH;
 };
 
-// ============================================================
-// SECTION 2: GUEST DETAILS (Primary + Co-Occupants side by side)
-// ============================================================
-
-const drawGuestLabelValue = (doc, x, y, labelWidth, label, value, maxWidth) => {
-  doc.font(CONFIG.fonts.bold).fontSize(CONFIG.fontSizes.label).fillColor(CONFIG.colors.textMuted)
-    .text(`${label}:`, x, y, { width: labelWidth, lineBreak: false });
-  doc.font(CONFIG.fonts.normal).fontSize(CONFIG.fontSizes.body).fillColor(CONFIG.colors.textPrimary)
-    .text(safeText(value), x + labelWidth + 4, y, { width: maxWidth - labelWidth - 4 });
-};
-
-const drawGuestCard = (doc, guest, guestData, x, y, w, cardNumber, label, isCoOccupant = false) => {
-  const labelWidth = 72;
-  const rowHeight = 14;
-  const padding = 8;
-
-  // Card border
-  doc.rect(x, y, w, 10).lineWidth(0.5).strokeColor(CONFIG.colors.border).stroke(); // placeholder for dynamic height
-
-  // Header row with guest number
-  const headerY = y;
+/**
+ * Renders a half-width card when there are multiple guests (2 cards side-by-side).
+ */
+const drawHalfGuestCard = (doc, guest, accGuest, x, y, w, cardNumber, roleLabel, isCoOccupant) => {
   const headerH = 18;
-  doc.rect(x, headerY, w, headerH).lineWidth(0.5).strokeColor(CONFIG.colors.border).stroke();
+  const rowH = 13;
+  const pad = 7;
+  const labelW = 64;
 
-  // Guest title
-  doc.font(CONFIG.fonts.bold).fontSize(CONFIG.fontSizes.body).fillColor(CONFIG.colors.textPrimary)
-    .text(`GUEST #${String(cardNumber).padStart(2, '0')}: ${label.toUpperCase()}`, x + padding, headerY + 5, { width: w - padding * 2 - 60, lineBreak: false });
-
-  // Verified badge
-  const badgeText = `#${String(cardNumber).padStart(2, '0')} Verified`;
-  const badgeW = doc.font(CONFIG.fonts.bold).fontSize(6).widthOfString(badgeText) + 12;
-  doc.roundedRect(x + w - badgeW - padding, headerY + 4, badgeW, 12, 3).fill(CONFIG.colors.successBg);
-  doc.font(CONFIG.fonts.bold).fontSize(6).fillColor(CONFIG.colors.verifiedBadge)
-    .text(badgeText, x + w - badgeW - padding + 6, headerY + 7, { lineBreak: false });
-
-  // Guest details rows
-  let rowY = headerY + headerH + padding;
-  const innerW = w - padding * 2;
-
-  if (!isCoOccupant) {
-    // Primary guest details
-    const fields = [
+  const fields = !isCoOccupant
+    ? [
       { label: 'FULL NAME', value: guest?.primaryGuest?.name },
       { label: 'MOBILE NO', value: guest?.primaryGuest?.phone },
       { label: 'DOB / GENDER', value: formatDobWithAgeAndGender(guest?.primaryGuest?.dob, guest?.primaryGuest?.gender) },
-      { label: 'NATIONALITY', value: guest?.primaryGuest?.nationality || guest?.hotel?.nationality || 'Indian' },
+      { label: 'NATIONALITY', value: guest?.primaryGuest?.nationality || 'Indian' },
       { label: 'ID DOCUMENT', value: `${safeText(guest?.idType)} (${maskIdNumber(guest?.idNumber)})` },
       { label: 'EMAIL', value: guest?.primaryGuest?.email },
       { label: 'ADDRESS', value: buildAddress(guest) },
-    ];
-
-    fields.forEach((field) => {
-      drawGuestLabelValue(doc, x + padding, rowY, labelWidth, field.label, field.value, innerW);
-      rowY += rowHeight;
-    });
-  } else {
-    // Co-occupant (accompanying guest)
-    const fields = [
-      { label: 'FULL NAME', value: guestData?.name },
-      { label: 'MOBILE NO', value: guestData?.phone || 'N/A' },
-      { label: 'DOB / GENDER', value: formatDobWithAgeAndGender(guestData?.dob, guestData?.gender) },
-      { label: 'NATIONALITY', value: 'Indian' },
-      { label: 'ID DOCUMENT', value: guestData?.idType ? `${safeText(guestData.idType)} (${maskIdNumber(guestData.idNumber)})` : 'N/A' },
-      { label: 'RELATION', value: 'Colleague / Co-Traveller' },
+    ]
+    : [
+      { label: 'FULL NAME', value: accGuest?.name },
+      { label: 'CATEGORY', value: accGuest?.category || 'Accompanying' },
+      { label: 'DOB / GENDER', value: formatDobWithAgeAndGender(accGuest?.dob, accGuest?.gender) },
+      { label: 'NATIONALITY', value: guest?.primaryGuest?.nationality || 'Indian' },
+      {
+        label: 'ID DOCUMENT',
+        value: accGuest?.idType ? `${safeText(accGuest.idType)} (${maskIdNumber(accGuest.idNumber)})` : 'Verified with Lead',
+      },
+      { label: 'MOBILE NO', value: accGuest?.phone || guest?.primaryGuest?.phone || 'N/A' },
       { label: 'ADDRESS', value: buildAddress(guest) },
     ];
 
-    fields.forEach((field) => {
-      drawGuestLabelValue(doc, x + padding, rowY, labelWidth, field.label, field.value, innerW);
-      rowY += rowHeight;
+  const totalH = headerH + pad + fields.length * rowH + 4;
+
+  // Outer Card Border
+  doc.roundedRect(x, y, w, totalH, 3).fillAndStroke(CONFIG.colors.cardBg, CONFIG.colors.border);
+
+  // Header Bar
+  doc.rect(x, y, w, headerH).fillAndStroke(CONFIG.colors.cardHeaderBg, CONFIG.colors.border);
+  doc
+    .font(CONFIG.fonts.bold)
+    .fontSize(7.5)
+    .fillColor(CONFIG.colors.brand)
+    .text(`GUEST #${String(cardNumber).padStart(2, '0')}: ${roleLabel.toUpperCase()}`, x + pad, y + 5, {
+      width: w - pad * 2 - 55,
+      lineBreak: false,
     });
-  }
 
-  const totalHeight = rowY - y + padding;
-  // Redraw the outer card border with correct height
-  doc.rect(x, y, w, totalHeight).lineWidth(0.5).strokeColor(CONFIG.colors.border).stroke();
+  // Verified Badge
+  const badgeText = `#${String(cardNumber).padStart(2, '0')} Verified`;
+  const badgeW = doc.font(CONFIG.fonts.bold).fontSize(6).widthOfString(badgeText) + 10;
+  doc.roundedRect(x + w - badgeW - pad, y + 3, badgeW, 12, 2.5).fill(CONFIG.colors.successBg);
+  doc
+    .fillColor(CONFIG.colors.verifiedBadge)
+    .text(badgeText, x + w - badgeW - pad + 5, y + 5.5, { lineBreak: false });
 
-  return totalHeight;
+  let rowY = y + headerH + 6;
+  const innerW = w - pad * 2;
+  fields.forEach((f) => {
+    drawKeyValueRow(doc, x + pad, rowY, labelW, innerW, f.label, f.value);
+    rowY += rowH;
+  });
+
+  return totalH;
 };
 
 const drawGuestDetailsSection = (doc, guest) => {
-  const adults = Array.isArray(guest?.accompanyingGuests?.adults) ? guest.accompanyingGuests.adults : [];
-  const children = Array.isArray(guest?.accompanyingGuests?.children) ? guest.accompanyingGuests.children : [];
-  const allAccompanying = [...adults, ...children];
-
+  const allAccompanying = getAllAccompanyingGuests(guest);
   const hasAccompanying = allAccompanying.length > 0;
-  const titleSuffix = hasAccompanying ? '(MULTIPLE OCCUPANTS)' : '(SINGLE OCCUPANT)';
-  drawSectionTitle(doc, '2', `GUEST DETAILS ${titleSuffix}`);
+  const titleSuffix = hasAccompanying
+    ? `(${1 + allAccompanying.length} OCCUPANTS REGISTERED)`
+    : '(SINGLE OCCUPANT)';
+
+  const minCardH = hasAccompanying ? 118 : 82;
+  drawSectionTitle(doc, '2', `GUEST DETAILS ${titleSuffix}`, minCardH);
 
   const area = getPageArea(doc);
   const gap = 8;
 
-  if (hasAccompanying) {
-    // Side-by-side: primary + first co-occupant
-    const colW = (area.contentWidth - gap) / 2;
-    const startY = doc.y;
+  if (!hasAccompanying) {
+    // 1 Guest -> Sleek full-width 2-column card
+    const h = drawSinglePrimaryGuestCard(doc, guest, area.left, doc.y, area.contentWidth);
+    doc.y += h + 8;
+    return;
+  }
 
-    ensureSpace(doc, 180);
-    const primaryHeight = drawGuestCard(doc, guest, null, area.left, doc.y, colW, 1, 'PRIMARY (LEAD)', false);
-    const coHeight = drawGuestCard(doc, guest, allAccompanying[0], area.left + colW + gap, startY, colW, 2, 'CO-OCCUPANT', true);
+  // Multiple Guests -> Pair them 2 per row (Guest #1 + Guest #2, then #3 + #4, etc.)
+  const allGuestsList = [
+    { isPrimary: true, data: null, role: 'PRIMARY (LEAD)' },
+    ...allAccompanying.map((g) => ({ isPrimary: false, data: g, role: `CO-OCCUPANT (${g.category})` })),
+  ];
 
-    doc.y = startY + Math.max(primaryHeight, coHeight) + 10;
+  const colW = (area.contentWidth - gap) / 2;
 
-    // Additional accompanying guests (if more than 1)
-    for (let i = 1; i < allAccompanying.length; i++) {
-      ensureSpace(doc, 180);
-      const h = drawGuestCard(doc, guest, allAccompanying[i], area.left, doc.y, area.contentWidth, i + 2, 'CO-OCCUPANT', true);
-      doc.y += h + 10;
+  for (let i = 0; i < allGuestsList.length; i += 2) {
+    ensureSpace(doc, 122);
+    const rowStartY = doc.y;
+    const leftGuest = allGuestsList[i];
+    const rightGuest = allGuestsList[i + 1];
+
+    const hLeft = drawHalfGuestCard(
+      doc,
+      guest,
+      leftGuest.data,
+      area.left,
+      rowStartY,
+      rightGuest ? colW : area.contentWidth,
+      i + 1,
+      leftGuest.role,
+      !leftGuest.isPrimary
+    );
+
+    let hRight = 0;
+    if (rightGuest) {
+      hRight = drawHalfGuestCard(
+        doc,
+        guest,
+        rightGuest.data,
+        area.left + colW + gap,
+        rowStartY,
+        colW,
+        i + 2,
+        rightGuest.role,
+        true
+      );
     }
-  } else {
-    // Single guest — full width
-    ensureSpace(doc, 180);
-    const h = drawGuestCard(doc, guest, null, area.left, doc.y, area.contentWidth, 1, 'PRIMARY (LEAD)', false);
-    doc.y += h + 10;
+
+    doc.y = rowStartY + Math.max(hLeft, hRight) + 8;
   }
 };
 
@@ -639,83 +835,208 @@ const drawGuestDetailsSection = (doc, guest) => {
 // ============================================================
 
 const drawImagePlaceholder = (doc, x, y, width, height, text) => {
-  doc.rect(x, y, width, height).fillAndStroke(CONFIG.colors.placeholderBg, CONFIG.colors.border);
-  doc.font(CONFIG.fonts.italic).fontSize(7).fillColor(CONFIG.colors.textMuted)
-    .text(text || 'Not Available', x + 4, y + height / 2 - 6, { width: width - 8, align: 'center' });
+  doc
+    .roundedRect(x, y, width, height, 3)
+    .fillAndStroke(CONFIG.colors.placeholderBg, CONFIG.colors.borderLight);
+  doc
+    .font(CONFIG.fonts.italic)
+    .fontSize(6.5)
+    .fillColor(CONFIG.colors.textMuted)
+    .text(text || 'Not Provided', x + 4, y + height / 2 - 4, {
+      width: width - 8,
+      align: 'center',
+      lineBreak: false,
+    });
 };
 
 const drawImageBox = (doc, x, y, width, height, title, imageBuffer, captionText) => {
-  // Title
-  doc.font(CONFIG.fonts.bold).fontSize(6.5).fillColor(CONFIG.colors.textMuted)
-    .text(title.toUpperCase(), x, y, { width: width, align: 'center', lineBreak: false });
+  const headerH = 13;
+  // Outer container
+  doc.roundedRect(x, y, width, height, 3).fillAndStroke(CONFIG.colors.cardBg, CONFIG.colors.border);
 
-  const imgY = y + 12;
-  const imgH = height - 12;
+  // Top label bar
+  doc.rect(x, y, width, headerH).fillAndStroke(CONFIG.colors.cardHeaderBg, CONFIG.colors.border);
+  doc
+    .font(CONFIG.fonts.bold)
+    .fontSize(6.2)
+    .fillColor(CONFIG.colors.textSecondary)
+    .text(title.toUpperCase(), x + 4, y + 3.5, {
+      width: width - 8,
+      align: 'center',
+      lineBreak: false,
+    });
 
-  // Border
-  doc.roundedRect(x, imgY, width, imgH, 4).lineWidth(0.5).strokeColor(CONFIG.colors.border).stroke();
+  const captionReserve = captionText ? 11 : 3;
+  const imgAreaY = y + headerH + 3;
+  const imgAreaH = height - headerH - captionReserve - 4;
+  const imgAreaW = width - 8;
 
   if (imageBuffer) {
     try {
-      doc.image(imageBuffer, x + 4, imgY + 4, { fit: [width - 8, imgH - 8], align: 'center', valign: 'center' });
+      doc.image(imageBuffer, x + 4, imgAreaY, {
+        fit: [imgAreaW, imgAreaH],
+        align: 'center',
+        valign: 'center',
+      });
     } catch (error) {
-      drawImagePlaceholder(doc, x + 2, imgY + 2, width - 4, imgH - 4, 'Image Error');
+      drawImagePlaceholder(doc, x + 4, imgAreaY, imgAreaW, imgAreaH, 'Image Render Error');
     }
   } else {
-    drawImagePlaceholder(doc, x + 2, imgY + 2, width - 4, imgH - 4);
+    drawImagePlaceholder(doc, x + 4, imgAreaY, imgAreaW, imgAreaH, 'Not Available');
   }
 
-  // Caption below image
   if (captionText) {
-    doc.font(CONFIG.fonts.italic).fontSize(6).fillColor(CONFIG.colors.textMuted)
-      .text(captionText, x, imgY + imgH + 2, { width: width, align: 'center', lineBreak: false });
+    doc
+      .font(CONFIG.fonts.italic)
+      .fontSize(5.8)
+      .fillColor(CONFIG.colors.textMuted)
+      .text(captionText, x + 4, y + height - 9.5, {
+        width: width - 8,
+        align: 'center',
+        lineBreak: false,
+      });
   }
 };
 
 const drawKycSection = (doc, images, guest) => {
-  drawSectionTitle(doc, '3', 'DIGITAL KYC VERIFICATION & LIVE CAPTURE EVIDENCE');
-  ensureSpace(doc, 160);
+  const accompanying = images.accompanyingGuests || [];
+  const hasAccompanying = accompanying.length > 0;
+  const boxHeight = 96;
+
+  drawSectionTitle(doc, '3', 'DIGITAL KYC VERIFICATION & LIVE CAPTURE EVIDENCE', boxHeight + 10);
 
   const area = getPageArea(doc);
   const gap = 8;
-  const colW = (area.contentWidth - gap * 3) / 4;
-  const boxHeight = 110;
   const startY = doc.y;
 
-  const primaryName = safeText(guest?.primaryGuest?.name, 'Guest');
-  const primaryTime = formatTime(guest?.registrationTimestamp);
+  const primaryFirst = safeText(guest?.primaryGuest?.name, 'Guest').split(' ')[0];
+  const regTime = formatTime(guest?.registrationTimestamp);
+  const primaryCaption = regTime ? `${primaryFirst} • Captured ${regTime}` : primaryFirst;
+  const idTypeLabel = safeText(guest?.idType, 'GOVT ID').toUpperCase();
 
-  // 4-column layout: Guest 1 Live Photo | Guest 2 Live Photo | ID Front | ID Back
-  const accompanyingGuests = images.accompanyingGuests || [];
-  const firstAccLivePhoto = accompanyingGuests.length > 0 ? accompanyingGuests[0]?.images?.livePhoto : null;
-  const firstAccName = accompanyingGuests.length > 0 ? safeText(accompanyingGuests[0]?.name, 'Guest 2') : null;
+  if (!hasAccompanying) {
+    // ── SINGLE GUEST: Clean 3-Column Grid (NO Ghost Guest #2 Box!) ──
+    const colW = (area.contentWidth - gap * 2) / 3;
 
-  drawImageBox(doc, area.left, startY, colW, boxHeight, 'GUEST 1: LIVE PHOTO', images.livePhoto, primaryTime ? `${primaryName.split(' ')[0]} (${primaryTime})` : null);
-  drawImageBox(doc, area.left + colW + gap, startY, colW, boxHeight, 'GUEST 2: LIVE PHOTO', firstAccLivePhoto, firstAccName ? `[Webcam Captured]` : null);
-  drawImageBox(doc, area.left + (colW + gap) * 2, startY, colW, boxHeight, 'GOVT ID PROOF (FRONT)', images.idImageFront);
-  drawImageBox(doc, area.left + (colW + gap) * 3, startY, colW, boxHeight, 'GOVT ID PROOF (BACK)', images.idImageBack);
+    drawImageBox(
+      doc,
+      area.left,
+      startY,
+      colW,
+      boxHeight,
+      'PRIMARY GUEST: LIVE PHOTO',
+      images.livePhoto,
+      primaryCaption
+    );
+    drawImageBox(
+      doc,
+      area.left + colW + gap,
+      startY,
+      colW,
+      boxHeight,
+      `${idTypeLabel} (FRONT)`,
+      images.idImageFront,
+      maskIdNumber(guest?.idNumber)
+    );
+    drawImageBox(
+      doc,
+      area.left + (colW + gap) * 2,
+      startY,
+      colW,
+      boxHeight,
+      `${idTypeLabel} (BACK)`,
+      images.idImageBack,
+      'Verified Document'
+    );
 
-  doc.y = startY + boxHeight + 22;
+    doc.y = startY + boxHeight + 8;
+  } else {
+    // ── MULTIPLE GUESTS: 4-Column Primary + Co-Occupant Row ──
+    const colW = (area.contentWidth - gap * 3) / 4;
+    const firstAcc = accompanying[0];
+    const firstAccName = safeText(firstAcc?.name, 'Guest 2').split(' ')[0];
 
-  // Additional accompanying guest images (if more than 1)
-  for (let i = 1; i < accompanyingGuests.length; i++) {
-    const acc = accompanyingGuests[i];
-    const hasAny = acc.images.livePhoto || acc.images.idImageFront || acc.images.idImageBack;
-    if (!hasAny) continue;
+    drawImageBox(
+      doc,
+      area.left,
+      startY,
+      colW,
+      boxHeight,
+      'GUEST #01: LIVE PHOTO',
+      images.livePhoto,
+      primaryCaption
+    );
+    drawImageBox(
+      doc,
+      area.left + colW + gap,
+      startY,
+      colW,
+      boxHeight,
+      'GUEST #02: LIVE PHOTO',
+      firstAcc?.livePhoto,
+      `${firstAccName} (${firstAcc?.category || 'Co-Guest'})`
+    );
+    drawImageBox(
+      doc,
+      area.left + (colW + gap) * 2,
+      startY,
+      colW,
+      boxHeight,
+      `GUEST #01 ${idTypeLabel} (FRONT)`,
+      images.idImageFront,
+      maskIdNumber(guest?.idNumber)
+    );
+    drawImageBox(
+      doc,
+      area.left + (colW + gap) * 3,
+      startY,
+      colW,
+      boxHeight,
+      `GUEST #01 ${idTypeLabel} (BACK)`,
+      images.idImageBack,
+      'Verified Document'
+    );
 
-    ensureSpace(doc, 130);
-    const accY = doc.y;
+    doc.y = startY + boxHeight + 8;
 
-    doc.font(CONFIG.fonts.bold).fontSize(CONFIG.fontSizes.body).fillColor(CONFIG.colors.textPrimary)
-      .text(`Additional Guest: ${safeText(acc.name)}`, area.left, accY);
-    const imgStartY = accY + 14;
+    // If Guest #2 also uploaded ID Front/Back or if there are Guests #3, #4...
+    const extraKycRows = [];
+
+    if (firstAcc?.idImageFront || firstAcc?.idImageBack) {
+      extraKycRows.push({
+        guestNum: 2,
+        name: firstAcc.name,
+        livePhoto: firstAcc.livePhoto,
+        idImageFront: firstAcc.idImageFront,
+        idImageBack: firstAcc.idImageBack,
+      });
+    }
+
+    for (let i = 1; i < accompanying.length; i++) {
+      const acc = accompanying[i];
+      if (acc.livePhoto || acc.idImageFront || acc.idImageBack) {
+        extraKycRows.push({
+          guestNum: i + 2,
+          name: acc.name,
+          livePhoto: acc.livePhoto,
+          idImageFront: acc.idImageFront,
+          idImageBack: acc.idImageBack,
+        });
+      }
+    }
 
     const accColW = (area.contentWidth - gap * 2) / 3;
-    drawImageBox(doc, area.left, imgStartY, accColW, boxHeight, 'LIVE PHOTO', acc.images.livePhoto);
-    drawImageBox(doc, area.left + accColW + gap, imgStartY, accColW, boxHeight, 'ID FRONT', acc.images.idImageFront);
-    drawImageBox(doc, area.left + (accColW + gap) * 2, imgStartY, accColW, boxHeight, 'ID BACK', acc.images.idImageBack);
+    for (const row of extraKycRows) {
+      ensureSpace(doc, boxHeight + 8);
+      const rowY = doc.y;
+      const gTag = `GUEST #${String(row.guestNum).padStart(2, '0')} (${safeText(row.name).split(' ')[0].toUpperCase()})`;
 
-    doc.y = imgStartY + boxHeight + 16;
+      drawImageBox(doc, area.left, rowY, accColW, boxHeight, `${gTag}: LIVE PHOTO`, row.livePhoto);
+      drawImageBox(doc, area.left + accColW + gap, rowY, accColW, boxHeight, `${gTag}: ID FRONT`, row.idImageFront);
+      drawImageBox(doc, area.left + (accColW + gap) * 2, rowY, accColW, boxHeight, `${gTag}: ID BACK`, row.idImageBack);
+
+      doc.y = rowY + boxHeight + 8;
+    }
   }
 };
 
@@ -723,54 +1044,172 @@ const drawKycSection = (doc, images, guest) => {
 // SECTION 4: HOTEL VERIFICATION & AUTHORIZATION
 // ============================================================
 
-const drawAuthorizationSection = (doc, images) => {
-  drawSectionTitle(doc, '4', 'HOTEL VERIFICATION & AUTHORIZATION');
-  ensureSpace(doc, 140);
+const drawAuthorizationSection = (doc, images, guest) => {
+  const sectionHeight = 84;
+  drawSectionTitle(doc, '4', 'HOTEL VERIFICATION & AUTHORIZATION', sectionHeight + 8);
 
   const area = getPageArea(doc);
   const startY = doc.y;
-  const sectionHeight = 110;
 
-  // Outer border
-  doc.rect(area.left, startY, area.contentWidth, sectionHeight).lineWidth(0.5).strokeColor(CONFIG.colors.border).stroke();
+  const hasGuestConsentSig = Boolean(images.guestSignature);
+  const numCols = hasGuestConsentSig ? 3 : 2;
+  const colW = area.contentWidth / numCols;
 
-  const halfW = area.contentWidth / 2;
+  // Outer container
+  doc.roundedRect(area.left, startY, area.contentWidth, sectionHeight, 3)
+    .fillAndStroke(CONFIG.colors.cardBg, CONFIG.colors.border);
 
-  // Left: Hotel Official Stamp
-  doc.rect(area.left, startY, halfW, sectionHeight).lineWidth(0.5).strokeColor(CONFIG.colors.border).stroke();
-  doc.font(CONFIG.fonts.bold).fontSize(CONFIG.fontSizes.label).fillColor(CONFIG.colors.textMuted)
-    .text('HOTEL OFFICIAL STAMP', area.left + 10, startY + 8, { width: halfW - 20, lineBreak: false });
+  // ── Column 1: Hotel Official Stamp ──
+  doc
+    .font(CONFIG.fonts.bold)
+    .fontSize(6.5)
+    .fillColor(CONFIG.colors.textMuted)
+    .text('HOTEL OFFICIAL STAMP', area.left + 8, startY + 6, { width: colW - 16, align: 'center', lineBreak: false });
 
   if (images.hotelStamp) {
     try {
-      doc.image(images.hotelStamp, area.left + 15, startY + 22, { fit: [halfW - 30, sectionHeight - 35], align: 'center', valign: 'center' });
+      doc.image(images.hotelStamp, area.left + 12, startY + 16, {
+        fit: [colW - 24, sectionHeight - 32],
+        align: 'center',
+        valign: 'center',
+      });
     } catch (e) {
-      drawImagePlaceholder(doc, area.left + 10, startY + 22, halfW - 20, sectionHeight - 35, '[Stamp Not Available]');
+      drawImagePlaceholder(doc, area.left + 12, startY + 18, colW - 24, sectionHeight - 34, 'Stamp Load Error');
     }
   } else {
-    drawImagePlaceholder(doc, area.left + 10, startY + 22, halfW - 20, sectionHeight - 35, '[Stamp Not Available]');
+    // Sleek digital verification stamp fallback if hotel hasn't uploaded a stamp image
+    const hotelTitle = safeText(guest?.hotel?.hotelName, 'Verified Hotel').toUpperCase();
+    doc
+      .roundedRect(area.left + 20, startY + 22, colW - 40, 38, 3)
+      .lineWidth(0.8)
+      .dash(3, { space: 2 })
+      .strokeColor(CONFIG.colors.brandAccent)
+      .stroke()
+      .undash();
+    doc
+      .font(CONFIG.fonts.bold)
+      .fontSize(7)
+      .fillColor(CONFIG.colors.brand)
+      .text(hotelTitle, area.left + 24, startY + 30, { width: colW - 48, align: 'center', lineBreak: false });
+    doc
+      .font(CONFIG.fonts.normal)
+      .fontSize(6)
+      .fillColor(CONFIG.colors.verifiedBadge)
+      .text('✓ DIGITALLY VERIFIED SEAL', area.left + 24, startY + 42, { width: colW - 48, align: 'center', lineBreak: false });
   }
 
-  // Right: Owner Signature
-  if (images.ownerSignature) {
-    try {
-      doc.image(images.ownerSignature, area.left + halfW + 15, startY + 15, { fit: [halfW - 30, sectionHeight - 40], align: 'center', valign: 'center' });
-    } catch (e) {
-      // Ignore
-    }
-  }
-
-  // Label below signature
-  doc.moveTo(area.left + halfW + 20, startY + sectionHeight - 20)
-    .lineTo(area.right - 20, startY + sectionHeight - 20)
-    .strokeColor(CONFIG.colors.border).lineWidth(0.3).stroke();
-
-  doc.font(CONFIG.fonts.normal).fontSize(CONFIG.fontSizes.small).fillColor(CONFIG.colors.textSecondary)
-    .text('Hotel Owner / Authorized Signatory', area.left + halfW + 10, startY + sectionHeight - 16, {
-      width: halfW - 20, align: 'right',
+  doc
+    .font(CONFIG.fonts.normal)
+    .fontSize(6)
+    .fillColor(CONFIG.colors.textMuted)
+    .text('Official Establishment Seal', area.left + 8, startY + sectionHeight - 12, {
+      width: colW - 16,
+      align: 'center',
+      lineBreak: false,
     });
 
-  doc.y = startY + sectionHeight + 10;
+  // Divider 1
+  doc
+    .moveTo(area.left + colW, startY)
+    .lineTo(area.left + colW, startY + sectionHeight)
+    .strokeColor(CONFIG.colors.border)
+    .lineWidth(0.5)
+    .stroke();
+
+  // ── Column 2 (optional): Primary Guest Signature (if captured via DPDP consent) ──
+  if (hasGuestConsentSig) {
+    const col2X = area.left + colW;
+    doc
+      .font(CONFIG.fonts.bold)
+      .fontSize(6.5)
+      .fillColor(CONFIG.colors.textMuted)
+      .text('PRIMARY GUEST SIGNATURE', col2X + 8, startY + 6, { width: colW - 16, align: 'center', lineBreak: false });
+
+    try {
+      doc.image(images.guestSignature, col2X + 14, startY + 18, {
+        fit: [colW - 28, sectionHeight - 38],
+        align: 'center',
+        valign: 'center',
+      });
+    } catch (e) {
+      // Ignore error
+    }
+
+    doc
+      .moveTo(col2X + 20, startY + sectionHeight - 16)
+      .lineTo(col2X + colW - 20, startY + sectionHeight - 16)
+      .strokeColor(CONFIG.colors.border)
+      .lineWidth(0.4)
+      .stroke();
+
+    doc
+      .font(CONFIG.fonts.normal)
+      .fontSize(6)
+      .fillColor(CONFIG.colors.textSecondary)
+      .text(safeText(guest?.primaryGuest?.name, 'Guest Signature'), col2X + 8, startY + sectionHeight - 12, {
+        width: colW - 16,
+        align: 'center',
+        lineBreak: false,
+      });
+
+    // Divider 2
+    doc
+      .moveTo(area.left + colW * 2, startY)
+      .lineTo(area.left + colW * 2, startY + sectionHeight)
+      .strokeColor(CONFIG.colors.border)
+      .lineWidth(0.5)
+      .stroke();
+  }
+
+  // ── Last Column: Hotel Owner / Authorized Signatory ──
+  const sigColX = area.left + colW * (numCols - 1);
+  doc
+    .font(CONFIG.fonts.bold)
+    .fontSize(6.5)
+    .fillColor(CONFIG.colors.textMuted)
+    .text('AUTHORIZED SIGNATORY', sigColX + 8, startY + 6, { width: colW - 16, align: 'center', lineBreak: false });
+
+  if (images.ownerSignature) {
+    try {
+      doc.image(images.ownerSignature, sigColX + 14, startY + 16, {
+        fit: [colW - 28, sectionHeight - 36],
+        align: 'center',
+        valign: 'center',
+      });
+    } catch (e) {
+      logger.warn(`Unable to embed ownerSignature: ${e.message}`);
+    }
+  } else {
+    const ownerName = safeText(guest?.hotel?.ownerName || guest?.hotel?.hotelName, 'Authorized Signatory');
+    doc
+      .font(CONFIG.fonts.italic)
+      .fontSize(9)
+      .fillColor(CONFIG.colors.brand)
+      .text(`Sd/- ${ownerName}`, sigColX + 12, startY + 34, {
+        width: colW - 24,
+        align: 'center',
+        lineBreak: false,
+      });
+  }
+
+  doc
+    .moveTo(sigColX + 20, startY + sectionHeight - 16)
+    .lineTo(sigColX + colW - 20, startY + sectionHeight - 16)
+    .strokeColor(CONFIG.colors.border)
+    .lineWidth(0.4)
+    .stroke();
+
+  doc
+    .font(CONFIG.fonts.normal)
+    .fontSize(6)
+    .fillColor(CONFIG.colors.textSecondary)
+    .text('Hotel Owner / Authorized Signatory', sigColX + 8, startY + sectionHeight - 12, {
+      width: colW - 16,
+      align: 'center',
+      lineBreak: false,
+    });
+
+  doc.y = startY + sectionHeight + 8;
 };
 
 // ============================================================
@@ -778,35 +1217,40 @@ const drawAuthorizationSection = (doc, images) => {
 // ============================================================
 
 const drawDeclaration = (doc) => {
-  ensureSpace(doc, 80);
-  const area = getPageArea(doc);
-  const startY = doc.y;
-
-  // Title
-  doc.font(CONFIG.fonts.bold).fontSize(CONFIG.fontSizes.body).fillColor(CONFIG.colors.textPrimary)
-    .text('GUEST DECLARATION & HOTEL REGULATIONS', area.left, startY);
-
-  const rulesY = startY + 14;
   const rules = [
     '1. I/We declare that all furnished identity details are authentic and certified under Section 193 of the Indian Penal Code.',
     '2. Standard Check-In: 12:00 PM | Standard Check-Out: 11:00 AM. Extra tariff applies on unapproved delay.',
     '3. Weapons, illicit contraband, or consumption of prohibited intoxicants is strictly banned inside premises.',
     '4. Hotel authority shall not be held liable for unsecured cash or precious items kept outside personal safe lockers.',
   ];
+  const ruleBoxH = rules.length * 10 + 10;
 
-  // Rules background
-  const ruleHeight = rules.length * 11 + 10;
-  doc.roundedRect(area.left, rulesY, area.contentWidth, ruleHeight, 3)
+  ensureSpace(doc, ruleBoxH + 18);
+  const area = getPageArea(doc);
+  const startY = doc.y;
+
+  doc
+    .font(CONFIG.fonts.bold)
+    .fontSize(7.2)
+    .fillColor(CONFIG.colors.brand)
+    .text('GUEST DECLARATION & HOTEL REGULATIONS', area.left, startY, { lineBreak: false });
+
+  const boxY = startY + 11;
+  doc
+    .roundedRect(area.left, boxY, area.contentWidth, ruleBoxH, 3)
     .fillAndStroke(CONFIG.colors.declarationBg, CONFIG.colors.borderLight);
 
-  let ruleY = rulesY + 6;
+  let ruleY = boxY + 5;
   rules.forEach((rule) => {
-    doc.font(CONFIG.fonts.normal).fontSize(6.5).fillColor(CONFIG.colors.textSecondary)
-      .text(rule, area.left + 8, ruleY, { width: area.contentWidth - 16 });
-    ruleY += 11;
+    doc
+      .font(CONFIG.fonts.normal)
+      .fontSize(6.2)
+      .fillColor(CONFIG.colors.textSecondary)
+      .text(rule, area.left + 8, ruleY, { width: area.contentWidth - 16, lineBreak: false });
+    ruleY += 10;
   });
 
-  doc.y = rulesY + ruleHeight + 8;
+  doc.y = boxY + ruleBoxH + 4;
 };
 
 // ============================================================
@@ -820,19 +1264,40 @@ const addPageFooters = (doc, guest, bookingRef) => {
   for (let i = 0; i < pageRange.count; i++) {
     doc.switchToPage(i);
     const area = getPageArea(doc);
-    const lineY = doc.page.height - CONFIG.margin - 18;
+    const lineY = doc.page.height - CONFIG.margin - 14;
 
-    doc.moveTo(area.left, lineY).lineTo(area.right, lineY)
-      .strokeColor(CONFIG.colors.divider).lineWidth(0.5).stroke();
+    doc
+      .moveTo(area.left, lineY)
+      .lineTo(area.right, lineY)
+      .strokeColor(CONFIG.colors.divider)
+      .lineWidth(0.5)
+      .stroke();
 
-    doc.font(CONFIG.fonts.bold).fontSize(CONFIG.fontSizes.footer).fillColor(CONFIG.colors.textMuted)
-      .text(hotelName, area.left, lineY + 5, { width: 180, lineBreak: false });
+    doc
+      .font(CONFIG.fonts.bold)
+      .fontSize(CONFIG.fontSizes.footer)
+      .fillColor(CONFIG.colors.textMuted)
+      .text(hotelName, area.left, lineY + 4, { width: 180, lineBreak: false });
 
-    doc.font(CONFIG.fonts.normal).fontSize(CONFIG.fontSizes.footer).fillColor(CONFIG.colors.textMuted)
-      .text(`Ref: ${bookingRef}  •  Powered by Apna Register`, area.left, lineY + 5, { width: area.contentWidth, align: 'center', lineBreak: false });
+    doc
+      .font(CONFIG.fonts.normal)
+      .fontSize(CONFIG.fontSizes.footer)
+      .fillColor(CONFIG.colors.textMuted)
+      .text(`Ref: ${bookingRef}  •  Powered by Apna Register`, area.left, lineY + 4, {
+        width: area.contentWidth,
+        align: 'center',
+        lineBreak: false,
+      });
 
-    doc.font(CONFIG.fonts.normal).fontSize(CONFIG.fontSizes.footer).fillColor(CONFIG.colors.textMuted)
-      .text(`Page ${i + 1} of ${pageRange.count}`, area.left, lineY + 5, { width: area.contentWidth, align: 'right', lineBreak: false });
+    doc
+      .font(CONFIG.fonts.normal)
+      .fontSize(CONFIG.fontSizes.footer)
+      .fillColor(CONFIG.colors.textMuted)
+      .text(`Page ${i + 1} of ${pageRange.count}`, area.left, lineY + 4, {
+        width: area.contentWidth,
+        align: 'right',
+        lineBreak: false,
+      });
   }
 };
 
@@ -850,7 +1315,7 @@ const renderMainPdf = async (guestData) => {
   const images = await loadReceiptImages(guestData);
 
   // Section 0: Header
-  drawHeader(doc, guestData, bookingRef);
+  drawHeader(doc, guestData);
 
   // Status Bar
   drawStatusBar(doc, guestData, bookingRef);
@@ -858,14 +1323,14 @@ const renderMainPdf = async (guestData) => {
   // Section 1: Stay Allocation & Booking Details
   drawStaySection(doc, guestData);
 
-  // Section 2: Guest Details
+  // Section 2: Guest Details (Dynamic 1-Guest Full Width or 2-Up Grid)
   drawGuestDetailsSection(doc, guestData);
 
-  // Section 3: Digital KYC Verification
+  // Section 3: Digital KYC Verification (Dynamic 3-Col for 1 Guest, 4-Col + Rows for Multi-Guest)
   drawKycSection(doc, images, guestData);
 
   // Section 4: Hotel Verification & Authorization
-  drawAuthorizationSection(doc, images);
+  drawAuthorizationSection(doc, images, guestData);
 
   // Declaration
   drawDeclaration(doc);
@@ -887,9 +1352,9 @@ const renderFallbackPdf = async (guestData, sourceError) => {
   const bookingRef = buildBookingRef(guestData);
 
   registerPageDecorators(doc);
-  drawHeader(doc, guestData, bookingRef);
+  drawHeader(doc, guestData);
 
-  drawSectionTitle(doc, '1', 'GUEST INFORMATION');
+  drawSectionTitle(doc, '1', 'GUEST INFORMATION', 80);
   const area = getPageArea(doc);
 
   const fields = [
@@ -900,16 +1365,28 @@ const renderFallbackPdf = async (guestData, sourceError) => {
   ];
 
   fields.forEach((f) => {
-    doc.font(CONFIG.fonts.bold).fontSize(CONFIG.fontSizes.label).fillColor(CONFIG.colors.textMuted)
+    doc
+      .font(CONFIG.fonts.bold)
+      .fontSize(CONFIG.fontSizes.label)
+      .fillColor(CONFIG.colors.textMuted)
       .text(`${f.label}:`, area.left, doc.y, { continued: true, width: 100 });
-    doc.font(CONFIG.fonts.normal).fontSize(CONFIG.fontSizes.body).fillColor(CONFIG.colors.textPrimary)
+    doc
+      .font(CONFIG.fonts.normal)
+      .fontSize(CONFIG.fontSizes.body)
+      .fillColor(CONFIG.colors.textPrimary)
       .text(`  ${safeText(f.value)}`);
     doc.moveDown(0.3);
   });
 
   doc.moveDown(0.5);
-  doc.font(CONFIG.fonts.italic).fontSize(CONFIG.fontSizes.small).fillColor(CONFIG.colors.textMuted)
-    .text(`Detailed rendering was unavailable. Reference ${bookingRef}. Reason: ${safeText(sourceError?.message, 'Unknown')}`, { width: area.contentWidth });
+  doc
+    .font(CONFIG.fonts.italic)
+    .fontSize(CONFIG.fontSizes.small)
+    .fillColor(CONFIG.colors.textMuted)
+    .text(
+      `Detailed rendering was unavailable. Reference ${bookingRef}. Reason: ${safeText(sourceError?.message, 'Unknown')}`,
+      { width: area.contentWidth }
+    );
 
   addPageFooters(doc, guestData, bookingRef);
   doc.end();
@@ -921,14 +1398,6 @@ const renderFallbackPdf = async (guestData, sourceError) => {
 // PUBLIC API
 // ============================================================
 
-/**
- * Generates the guest checkout PDF as a Buffer.
- * Images are fetched server-side via time-limited signed Cloudinary URLs,
- * optimized with Sharp, and embedded as raw buffers — no public URLs in PDF.
- *
- * @param {object} guestData - Guest document populated with hotel details.
- * @returns {Promise<Buffer>} PDF Buffer
- */
 const generateGuestPDF = async (guestData) => {
   try {
     return await renderMainPdf(guestData || {});
