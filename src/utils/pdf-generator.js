@@ -10,12 +10,12 @@ const logger = require('./logger');
 const { generateSignedUrl } = require('./cloudinary');
 
 // ============================================================
-// CONFIGURATION
+// CONFIGURATION — Matching the professional template design
 // ============================================================
 
 const CONFIG = {
   size: 'A4',
-  margin: 40,
+  margin: 30,
   footerReserve: 50,
   fonts: {
     bold: 'Helvetica-Bold',
@@ -23,36 +23,38 @@ const CONFIG = {
     italic: 'Helvetica-Oblique',
   },
   fontSizes: {
-    hotelName: 18,
-    title: 13,
-    section: 11.5,
-    body: 9.5,
-    label: 8.5,
-    small: 8,
-    footer: 7.5,
+    hotelName: 16,
+    subtitle: 8,
+    sectionTitle: 10,
+    body: 8,
+    label: 7.5,
+    small: 7,
+    footer: 6.5,
     watermark: 64,
-    tableHeader: 8,
-    tableBody: 8.5,
+    badge: 7,
+    statusBar: 7.5,
   },
   colors: {
-    brand: '#0d47a1',
-    brandLight: '#e8eef7',
-    brandDark: '#092e6b',
+    brand: '#1a3a5c',
+    brandLight: '#e8f0fe',
+    brandAccent: '#2563eb',
+    sectionBg: '#1a3a5c',
+    sectionText: '#ffffff',
     textPrimary: '#1a1a2e',
     textSecondary: '#4a5568',
     textMuted: '#718096',
-    border: '#cbd5e0',
+    border: '#d1d5db',
+    borderLight: '#e5e7eb',
     divider: '#e2e8f0',
-    sectionBg: '#f7fafc',
     cardBg: '#ffffff',
-    headerBg: '#0d47a1',
-    headerText: '#ffffff',
-    tableBorder: '#cbd5e0',
-    tableHeaderBg: '#edf2f7',
-    tableStripeBg: '#f7fafc',
-    watermark: '#a0aec0',
-    successGreen: '#276749',
+    cellBg: '#f8fafc',
+    successGreen: '#16a34a',
+    successBg: '#dcfce7',
+    verifiedBadge: '#15803d',
     placeholderBg: '#f0f4f8',
+    watermark: '#a0aec0',
+    stampBorder: '#94a3b8',
+    declarationBg: '#f8fafc',
   },
   image: {
     timeoutMs: 8000,
@@ -99,6 +101,17 @@ const formatDateTime = (value) => {
   });
 };
 
+const formatTime = (value) => {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toLocaleString('en-IN', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true,
+  });
+};
+
 const calculateAge = (dob) => {
   if (!dob) return null;
   const birthDate = new Date(dob);
@@ -117,16 +130,29 @@ const formatDobWithAge = (dob) => {
   if (dateStr === 'N/A') return dateStr;
   const age = calculateAge(dob);
   if (age !== null) {
-    return `${dateStr} (${age} yrs)`;
+    return `${dateStr} (${age} Yrs)`;
   }
   return dateStr;
+};
+
+const formatDobWithAgeAndGender = (dob, gender) => {
+  const dateStr = formatDate(dob);
+  if (dateStr === 'N/A') return dateStr;
+  const age = calculateAge(dob);
+  const parts = [dateStr];
+  if (age !== null) parts.push(`(${age} Yrs)`);
+  if (gender) parts.push(`• ${gender}`);
+  return parts.join(' ');
 };
 
 const maskIdNumber = (idNumber) => {
   const value = safeText(idNumber, 'N/A');
   if (value === 'N/A') return value;
   if (value.length <= 6) return value;
-  return `${value.slice(0, 2)}${'*'.repeat(value.length - 4)}${value.slice(-2)}`;
+  const prefix = value.slice(0, 4);
+  const suffix = value.slice(-4);
+  const masked = 'X'.repeat(Math.max(0, value.length - 8));
+  return `${prefix}-${masked}-${suffix}`;
 };
 
 const buildAddress = (guest) => {
@@ -144,31 +170,41 @@ const buildHotelAddress = (hotel) => {
   return parts.join(', ') || '';
 };
 
-const buildDocumentRef = (guest) => {
+const buildBookingRef = (guest) => {
   const source = [
     safeText(guest?.customerId, ''),
     safeText(guest?._id, ''),
-    safeText(guest?.idNumber, ''),
     safeText(guest?.stayDetails?.checkIn, ''),
-    safeText(guest?.stayDetails?.checkOut, ''),
   ].join('|');
+  return `GP-${crypto.createHash('sha256').update(source).digest('hex').slice(0, 12).toUpperCase()}`;
+};
 
-  return crypto.createHash('sha256').update(source).digest('hex').slice(0, 12).toUpperCase();
+const getOccupancyText = (guest) => {
+  const adults = Array.isArray(guest?.accompanyingGuests?.adults) ? guest.accompanyingGuests.adults.length : 0;
+  const children = Array.isArray(guest?.accompanyingGuests?.children) ? guest.accompanyingGuests.children.length : 0;
+  const totalPeople = 1 + adults + children; // primary + accompanying
+  const parts = [];
+  parts.push(`${totalPeople} ${totalPeople === 1 ? 'Person' : 'People'}`);
+  if (adults > 0 || children > 0) {
+    const detail = [];
+    detail.push(`${1 + adults} Adults`);
+    if (children > 0) detail.push(`${children} Children`);
+    parts.push(`(${detail.join(', ')})`);
+  }
+  return parts.join(' ');
 };
 
 // ============================================================
 // PDF DOCUMENT SETUP
 // ============================================================
 
-const getPageArea = (doc) => {
-  return {
-    left: CONFIG.margin,
-    right: doc.page.width - CONFIG.margin,
-    top: CONFIG.margin,
-    bottom: doc.page.height - CONFIG.margin,
-    contentWidth: doc.page.width - CONFIG.margin * 2,
-  };
-};
+const getPageArea = (doc) => ({
+  left: CONFIG.margin,
+  right: doc.page.width - CONFIG.margin,
+  top: CONFIG.margin,
+  bottom: doc.page.height - CONFIG.margin,
+  contentWidth: doc.page.width - CONFIG.margin * 2,
+});
 
 const ensureSpace = (doc, requiredHeight = 40) => {
   const maxY = doc.page.height - CONFIG.margin - CONFIG.footerReserve;
@@ -202,7 +238,7 @@ const collectPdfBuffer = (doc) => {
 };
 
 // ============================================================
-// WATERMARK — Fixed: single-line rendering
+// WATERMARK
 // ============================================================
 
 const drawWatermark = (doc) => {
@@ -212,18 +248,15 @@ const drawWatermark = (doc) => {
   const centerY = doc.page.height / 2;
 
   doc.save();
-  doc.opacity(0.04);
+  doc.opacity(0.03);
   doc.fillColor(CONFIG.colors.watermark);
   doc.font(CONFIG.fonts.bold).fontSize(CONFIG.fontSizes.watermark);
 
-  // Measure actual text width to ensure it never wraps
   const textWidth = doc.widthOfString('Apna Register');
   const textX = centerX - textWidth / 2;
 
   doc.rotate(-35, { origin: [centerX, centerY] });
-  doc.text('Apna Register', textX, centerY - 20, {
-    lineBreak: false,
-  });
+  doc.text('Apna Register', textX, centerY - 20, { lineBreak: false });
   doc.restore();
 
   doc.opacity(1);
@@ -234,355 +267,7 @@ const drawWatermark = (doc) => {
 
 const registerPageDecorators = (doc) => {
   drawWatermark(doc);
-  doc.on('pageAdded', () => {
-    drawWatermark(doc);
-  });
-};
-
-// ============================================================
-// HEADER — Hotel-branded professional layout
-// ============================================================
-
-const drawHeader = (doc, guest, documentRef) => {
-  const area = getPageArea(doc);
-  const hotelName = safeText(guest?.hotel?.hotelName || guest?.hotel?.username, 'Hotel');
-  const hotelAddress = buildHotelAddress(guest?.hotel);
-  const hotelPhone = safeText(guest?.hotel?.phone, '');
-
-  // ── Top brand bar ──
-  const barHeight = 6;
-  doc.rect(area.left, area.top, area.contentWidth, barHeight).fill(CONFIG.colors.brand);
-
-  const headerY = area.top + barHeight + 14;
-
-  // ── Right side: Meta info box (draw first to calculate left width) ──
-  const metaBoxWidth = 190;
-  const metaPadding = 10;
-  const metaRowHeight = 14;
-  const metaRows = [
-    { label: 'Reference:', value: documentRef },
-    { label: 'Customer ID:', value: safeText(guest?.customerId) },
-    { label: 'Generated:', value: formatDateTime(new Date()) },
-    { label: 'Status:', value: safeText(guest?.status, 'Checked-Out') },
-  ];
-  const metaContentHeight = metaRows.length * metaRowHeight + metaPadding;
-  const metaBoxHeight = metaContentHeight + metaPadding;
-  const metaX = area.right - metaBoxWidth;
-  const metaY = headerY;
-
-  // Box background + border
-  doc
-    .roundedRect(metaX, metaY, metaBoxWidth, metaBoxHeight, 5)
-    .lineWidth(0.8)
-    .fillAndStroke(CONFIG.colors.sectionBg, CONFIG.colors.border);
-
-  // Meta rows — structured grid: label left, value right
-  const labelColWidth = 72;
-  const valueColWidth = metaBoxWidth - labelColWidth - metaPadding * 2;
-  let rowY = metaY + metaPadding;
-
-  metaRows.forEach((row) => {
-    // Label (left-aligned)
-    doc
-      .font(CONFIG.fonts.bold)
-      .fontSize(7.5)
-      .fillColor(CONFIG.colors.textMuted)
-      .text(row.label, metaX + metaPadding, rowY, {
-        width: labelColWidth,
-        lineBreak: false,
-      });
-
-    // Value (right-aligned)
-    doc
-      .font(CONFIG.fonts.normal)
-      .fontSize(7.5)
-      .fillColor(CONFIG.colors.textPrimary)
-      .text(safeText(row.value), metaX + metaPadding + labelColWidth, rowY, {
-        width: valueColWidth,
-        align: 'right',
-        lineBreak: false,
-      });
-
-    rowY += metaRowHeight;
-  });
-
-  // ── Left side: Logo + Hotel info ──
-  const leftWidth = metaX - area.left - 16;
-  let infoX = area.left;
-
-  if (fs.existsSync(LOGO_PATH)) {
-    try {
-      doc.image(LOGO_PATH, area.left, headerY, {
-        fit: [48, 48],
-        align: 'center',
-        valign: 'center',
-      });
-      infoX = area.left + 56;
-    } catch (error) {
-      logger.warn(`Unable to load logo in PDF header: ${error.message}`);
-    }
-  }
-
-  // Hotel name
-  doc
-    .font(CONFIG.fonts.bold)
-    .fontSize(CONFIG.fontSizes.hotelName)
-    .fillColor(CONFIG.colors.brand)
-    .text(hotelName, infoX, headerY, { width: leftWidth - (infoX - area.left), lineBreak: false });
-
-  // "Checkout Receipt" subtitle
-  doc
-    .font(CONFIG.fonts.normal)
-    .fontSize(CONFIG.fontSizes.title)
-    .fillColor(CONFIG.colors.textSecondary)
-    .text('Guest Checkout Receipt', infoX, headerY + 22, { width: leftWidth });
-
-  // Hotel contact line
-  const contactParts = [hotelAddress, hotelPhone].filter(Boolean);
-  if (contactParts.length > 0) {
-    doc
-      .font(CONFIG.fonts.normal)
-      .fontSize(CONFIG.fontSizes.small)
-      .fillColor(CONFIG.colors.textMuted)
-      .text(contactParts.join('  |  '), infoX, headerY + 38, { width: leftWidth });
-  }
-
-  // ── Separator line ──
-  const sepY = Math.max(headerY + 56, metaY + metaBoxHeight + 6);
-  doc
-    .moveTo(area.left, sepY)
-    .lineTo(area.right, sepY)
-    .strokeColor(CONFIG.colors.divider)
-    .lineWidth(0.5)
-    .stroke();
-
-  doc.y = sepY + 14;
-};
-
-// ============================================================
-// SECTION TITLE — Clean underlined section headers
-// ============================================================
-
-const drawSectionTitle = (doc, title) => {
-  ensureSpace(doc, 30);
-  const area = getPageArea(doc);
-
-  doc
-    .font(CONFIG.fonts.bold)
-    .fontSize(CONFIG.fontSizes.section)
-    .fillColor(CONFIG.colors.brand)
-    .text(title.toUpperCase(), area.left, doc.y, {
-      width: area.contentWidth,
-      characterSpacing: 0.5,
-    });
-
-  const lineY = doc.y + 3;
-  doc
-    .moveTo(area.left, lineY)
-    .lineTo(area.left + 60, lineY)
-    .strokeColor(CONFIG.colors.brand)
-    .lineWidth(1.5)
-    .stroke();
-
-  // Light full-width divider
-  doc
-    .moveTo(area.left + 60, lineY)
-    .lineTo(area.right, lineY)
-    .strokeColor(CONFIG.colors.divider)
-    .lineWidth(0.5)
-    .stroke();
-
-  doc.y = lineY + 10;
-};
-
-// ============================================================
-// KEY-VALUE GRID — Clean 2-column data display
-// ============================================================
-
-const drawKeyValueGrid = (doc, entries, columns = 2) => {
-  const area = getPageArea(doc);
-  const safeColumns = Math.max(1, columns);
-  const columnGap = 16;
-  const columnWidth = (area.contentWidth - columnGap * (safeColumns - 1)) / safeColumns;
-
-  for (let i = 0; i < entries.length; i += safeColumns) {
-    const rowEntries = entries.slice(i, i + safeColumns);
-    ensureSpace(doc, 28);
-
-    const startY = doc.y;
-    let maxRowY = startY;
-
-    rowEntries.forEach((entry, columnIndex) => {
-      const x = area.left + columnIndex * (columnWidth + columnGap);
-      const labelWidth = Math.min(100, Math.floor(columnWidth * 0.4));
-      const valueX = x + labelWidth + 4;
-      const valueWidth = columnWidth - labelWidth - 4;
-
-      doc
-        .font(CONFIG.fonts.bold)
-        .fontSize(CONFIG.fontSizes.label)
-        .fillColor(CONFIG.colors.textMuted)
-        .text(`${safeText(entry.label, '-')}:`, x, startY, {
-          width: labelWidth,
-        });
-
-      doc
-        .font(CONFIG.fonts.normal)
-        .fontSize(CONFIG.fontSizes.body)
-        .fillColor(CONFIG.colors.textPrimary)
-        .text(safeText(entry.value), valueX, startY, {
-          width: valueWidth,
-        });
-
-      maxRowY = Math.max(maxRowY, doc.y);
-    });
-
-    doc.y = maxRowY + 5;
-  }
-
-  doc.moveDown(0.2);
-};
-
-// ============================================================
-// ACCOMPANYING GUESTS — Professional table layout
-// ============================================================
-
-const drawAccompanyingGuestSection = (doc, guest) => {
-  const adults = Array.isArray(guest?.accompanyingGuests?.adults)
-    ? guest.accompanyingGuests.adults
-    : [];
-  const children = Array.isArray(guest?.accompanyingGuests?.children)
-    ? guest.accompanyingGuests.children
-    : [];
-
-  if (adults.length === 0 && children.length === 0) {
-    return;
-  }
-
-  drawSectionTitle(doc, 'Accompanying Guests');
-
-  // Summary row
-  drawKeyValueGrid(
-    doc,
-    [
-      { label: 'Total Adults', value: String(adults.length) },
-      { label: 'Total Children', value: String(children.length) },
-    ],
-    2
-  );
-
-  // Build table rows — defensive: convert Mongoose sub-docs to plain objects
-  const toPlain = (obj) => (typeof obj?.toObject === 'function' ? obj.toObject() : obj);
-  const allGuests = [
-    ...adults.map((g) => ({ ...toPlain(g), type: 'Adult' })),
-    ...children.map((g) => ({ ...toPlain(g), type: 'Child' })),
-  ];
-
-  if (allGuests.length === 0) return;
-
-  const area = getPageArea(doc);
-
-  // Table column definitions
-  const cols = [
-    { header: '#', width: 22, align: 'center' },
-    { header: 'Name', width: 120, align: 'left' },
-    { header: 'Type', width: 45, align: 'center' },
-    { header: 'Gender', width: 50, align: 'center' },
-    { header: 'DOB / Age', width: 90, align: 'center' },
-    { header: 'ID Type', width: 65, align: 'center' },
-    { header: 'ID Number', width: 0, align: 'center' }, // flex fill remaining
-  ];
-
-  // Calculate flex column width
-  const fixedWidth = cols.reduce((sum, c) => sum + c.width, 0);
-  cols[cols.length - 1].width = area.contentWidth - fixedWidth;
-
-  const rowHeight = 18;
-  const headerHeight = 20;
-
-  // ── Draw table header ──
-  ensureSpace(doc, headerHeight + rowHeight * 2);
-  const tableX = area.left;
-  let tableY = doc.y;
-
-  // Header background
-  doc.rect(tableX, tableY, area.contentWidth, headerHeight).fill(CONFIG.colors.tableHeaderBg);
-
-  // Header border
-  doc
-    .rect(tableX, tableY, area.contentWidth, headerHeight)
-    .strokeColor(CONFIG.colors.tableBorder)
-    .lineWidth(0.5)
-    .stroke();
-
-  // Header text
-  let colX = tableX;
-  cols.forEach((col) => {
-    doc
-      .font(CONFIG.fonts.bold)
-      .fontSize(CONFIG.fontSizes.tableHeader)
-      .fillColor(CONFIG.colors.textSecondary)
-      .text(col.header, colX + 4, tableY + 5, {
-        width: col.width - 8,
-        align: col.align,
-        lineBreak: false,
-      });
-    colX += col.width;
-  });
-
-  tableY += headerHeight;
-
-  // ── Draw table rows ──
-  allGuests.forEach((g, index) => {
-    ensureSpace(doc, rowHeight + 4);
-    // After a page break, reset tableY to current position
-    if (doc.y < tableY) {
-      tableY = doc.y;
-    }
-
-    // Stripe alternating rows
-    if (index % 2 === 0) {
-      doc.rect(tableX, tableY, area.contentWidth, rowHeight).fill(CONFIG.colors.tableStripeBg);
-    }
-
-    // Row border
-    doc
-      .rect(tableX, tableY, area.contentWidth, rowHeight)
-      .strokeColor(CONFIG.colors.tableBorder)
-      .lineWidth(0.3)
-      .stroke();
-
-    const age = calculateAge(g.dob);
-    const dobAge = g.dob ? `${formatDate(g.dob)}${age !== null ? ` (${age})` : ''}` : 'N/A';
-
-    const rowData = [
-      String(index + 1),
-      safeText(g.name),
-      safeText(g.type),
-      safeText(g.gender),
-      dobAge,
-      safeText(g.idType, '-'),
-      g.idNumber ? maskIdNumber(g.idNumber) : '-',
-    ];
-
-    colX = tableX;
-    rowData.forEach((cellValue, ci) => {
-      doc
-        .font(CONFIG.fonts.normal)
-        .fontSize(CONFIG.fontSizes.tableBody)
-        .fillColor(CONFIG.colors.textPrimary)
-        .text(cellValue, colX + 4, tableY + 5, {
-          width: cols[ci].width - 8,
-          align: cols[ci].align,
-          lineBreak: false,
-        });
-      colX += cols[ci].width;
-    });
-
-    tableY += rowHeight;
-  });
-
-  doc.y = tableY + 10;
+  doc.on('pageAdded', () => drawWatermark(doc));
 };
 
 // ============================================================
@@ -596,31 +281,20 @@ const normalizeImageField = (field) => {
   return {};
 };
 
-const isHttpUrl = (value) => {
-  return typeof value === 'string' && /^https?:\/\//i.test(value);
-};
+const isHttpUrl = (value) => typeof value === 'string' && /^https?:\/\//i.test(value);
 
 const getImageCandidates = (field) => {
   const normalized = normalizeImageField(field);
   const urls = [];
-
-  // Priority 1: Generate a fresh signed URL from public_id (most secure)
   if (normalized.public_id) {
     try {
       const signedUrl = generateSignedUrl(normalized.public_id);
-      if (isHttpUrl(signedUrl)) {
-        urls.push(signedUrl);
-      }
+      if (isHttpUrl(signedUrl)) urls.push(signedUrl);
     } catch (error) {
-      logger.warn(`Failed to generate signed URL for image: ${error.message}`);
+      logger.warn(`Failed to generate signed URL: ${error.message}`);
     }
   }
-
-  // Priority 2: Fall back to stored URL
-  if (isHttpUrl(normalized.url)) {
-    urls.push(normalized.url);
-  }
-
+  if (isHttpUrl(normalized.url)) urls.push(normalized.url);
   return [...new Set(urls)];
 };
 
@@ -632,68 +306,49 @@ const fetchAndOptimizeImage = async (url) => {
     maxBodyLength: CONFIG.image.maxBytes,
     validateStatus: (status) => status >= 200 && status < 300,
   });
-
   const contentType = String(response.headers?.['content-type'] || '').toLowerCase();
   if (contentType && !contentType.startsWith('image/')) {
     throw new Error(`Unexpected content type: ${contentType}`);
   }
-
   const inputBuffer = Buffer.from(response.data);
-  if (!inputBuffer.length) {
-    throw new Error('Empty image data');
-  }
-
+  if (!inputBuffer.length) throw new Error('Empty image data');
   return sharp(inputBuffer)
     .rotate()
-    .resize(CONFIG.image.maxDimension, CONFIG.image.maxDimension, {
-      fit: 'inside',
-      withoutEnlargement: true,
-    })
+    .resize(CONFIG.image.maxDimension, CONFIG.image.maxDimension, { fit: 'inside', withoutEnlargement: true })
     .jpeg({ quality: CONFIG.image.quality })
     .toBuffer();
 };
 
 const loadImageBuffer = async (field, label) => {
   const candidates = getImageCandidates(field);
-  if (!candidates.length) {
-    return null;
-  }
-
+  if (!candidates.length) return null;
   for (const candidate of candidates) {
-    try {
-      return await fetchAndOptimizeImage(candidate);
-    } catch (error) {
-      logger.warn(`Unable to load ${label} image for PDF: ${error.message}`);
-    }
+    try { return await fetchAndOptimizeImage(candidate); }
+    catch (error) { logger.warn(`Unable to load ${label} image: ${error.message}`); }
   }
-
   return null;
 };
 
 const loadReceiptImages = async (guest) => {
-  const [livePhoto, idImageFront, idImageBack] = await Promise.all([
+  const [livePhoto, idImageFront, idImageBack, ownerSignature, hotelStamp] = await Promise.all([
     loadImageBuffer(guest?.livePhoto, 'live photo'),
     loadImageBuffer(guest?.idImageFront, 'ID front'),
     loadImageBuffer(guest?.idImageBack, 'ID back'),
+    loadImageBuffer(guest?.hotel?.ownerSignature, 'owner signature'),
+    loadImageBuffer(guest?.hotel?.hotelStamp, 'hotel stamp'),
   ]);
 
+  // Load accompanying guest images
   const loadAccImages = async (guests) => {
     if (!guests || !Array.isArray(guests)) return [];
     return Promise.all(
       guests.map(async (accGuest) => {
-        const [accLivePhoto, accIdImageFront, accIdImageBack] = await Promise.all([
-          loadImageBuffer(accGuest.livePhoto, `Accompanying guest ${accGuest.name} live photo`),
-          loadImageBuffer(accGuest.idImageFront, `Accompanying guest ${accGuest.name} ID front`),
-          loadImageBuffer(accGuest.idImageBack, `Accompanying guest ${accGuest.name} ID back`),
+        const [accLivePhoto, accIdFront, accIdBack] = await Promise.all([
+          loadImageBuffer(accGuest.livePhoto, `${accGuest.name} live photo`),
+          loadImageBuffer(accGuest.idImageFront, `${accGuest.name} ID front`),
+          loadImageBuffer(accGuest.idImageBack, `${accGuest.name} ID back`),
         ]);
-        return {
-          name: accGuest.name,
-          images: {
-            livePhoto: accLivePhoto,
-            idImageFront: accIdImageFront,
-            idImageBack: accIdImageBack,
-          }
-        };
+        return { name: accGuest.name, images: { livePhoto: accLivePhoto, idImageFront: accIdFront, idImageBack: accIdBack } };
       })
     );
   };
@@ -701,260 +356,483 @@ const loadReceiptImages = async (guest) => {
   const accompanyingAdults = await loadAccImages(guest?.accompanyingGuests?.adults);
   const accompanyingChildren = await loadAccImages(guest?.accompanyingGuests?.children);
 
-  return { 
-    livePhoto, idImageFront, idImageBack,
-    accompanyingGuests: [...accompanyingAdults, ...accompanyingChildren]
-  };
+  return { livePhoto, idImageFront, idImageBack, ownerSignature, hotelStamp, accompanyingGuests: [...accompanyingAdults, ...accompanyingChildren] };
 };
 
 // ============================================================
-// IMAGE SECTION — Clean 3-column card layout
+// SECTION 0: HEADER — Logo + Hotel Name + Contact
 // ============================================================
 
-const drawImagePlaceholder = (doc, x, y, width, height) => {
-  doc.rect(x, y, width, height).fillAndStroke(CONFIG.colors.placeholderBg, CONFIG.colors.divider);
+const drawHeader = (doc, guest, bookingRef) => {
+  const area = getPageArea(doc);
+  const headerY = area.top;
 
-  const textY = y + height / 2 - 6;
-  doc
-    .font(CONFIG.fonts.italic)
-    .fontSize(8)
-    .fillColor(CONFIG.colors.textMuted)
-    .text('Image not available', x + 4, textY, {
-      width: width - 8,
-      align: 'center',
-    });
+  // ── Left: Logo ──
+  let logoEndX = area.left;
+  if (fs.existsSync(LOGO_PATH)) {
+    try {
+      doc.image(LOGO_PATH, area.left, headerY, { fit: [80, 50], align: 'center', valign: 'center' });
+      logoEndX = area.left + 88;
+    } catch (error) {
+      logger.warn(`Unable to load logo: ${error.message}`);
+    }
+  }
+
+  // ── Right: Hotel Name + Details ──
+  const hotelName = safeText(guest?.hotel?.hotelName || guest?.hotel?.username, 'Hotel').toUpperCase();
+  const hotelAddress = buildHotelAddress(guest?.hotel);
+  const hotelPhone = safeText(guest?.hotel?.phone, '');
+  const gstNumber = safeText(guest?.hotel?.gstNumber, '');
+
+  doc.font(CONFIG.fonts.bold).fontSize(CONFIG.fontSizes.hotelName).fillColor(CONFIG.colors.brand)
+    .text(hotelName, logoEndX, headerY + 2, { width: area.right - logoEndX, align: 'right', lineBreak: false });
+
+  // Sub-details line
+  const subParts = [];
+  if (hotelAddress) subParts.push(hotelAddress);
+  if (hotelPhone) subParts.push(`Desk: ${hotelPhone}`);
+  if (gstNumber && gstNumber !== 'N/A') subParts.push(`GSTIN: ${gstNumber}`);
+  
+  if (subParts.length > 0) {
+    doc.font(CONFIG.fonts.normal).fontSize(CONFIG.fontSizes.small).fillColor(CONFIG.colors.textSecondary)
+      .text(subParts.join(' | '), logoEndX, headerY + 20, { width: area.right - logoEndX, align: 'right' });
+  }
+
+  // ── Separator ──
+  const sepY = headerY + 42;
+  doc.moveTo(area.left, sepY).lineTo(area.right, sepY).strokeColor(CONFIG.colors.border).lineWidth(0.5).stroke();
+  doc.y = sepY + 4;
 };
 
-const drawImageCard = (doc, options) => {
-  const { x, y, width, height, title, imageBuffer } = options;
+// ============================================================
+// STATUS BAR — Verified badge + Booking Ref + Customer ID + Timestamp
+// ============================================================
+
+const drawStatusBar = (doc, guest, bookingRef) => {
+  const area = getPageArea(doc);
+  const barY = doc.y;
+  const barHeight = 22;
+
+  // Background bar
+  doc.roundedRect(area.left, barY, area.contentWidth, barHeight, 4)
+    .fill(CONFIG.colors.cellBg);
+  doc.roundedRect(area.left, barY, area.contentWidth, barHeight, 4)
+    .lineWidth(0.5).strokeColor(CONFIG.colors.borderLight).stroke();
+
+  // ── Green verified badge ──
+  const badgeText = `✓ VERIFIED & ${safeText(guest?.status, 'CHECKED-OUT').toUpperCase()}`;
+  const badgeWidth = doc.font(CONFIG.fonts.bold).fontSize(CONFIG.fontSizes.badge).widthOfString(badgeText) + 16;
+  const badgeX = area.left + 8;
+  const badgeY = barY + 4;
+
+  doc.roundedRect(badgeX, badgeY, badgeWidth, 14, 3).fill(CONFIG.colors.successBg);
+  doc.font(CONFIG.fonts.bold).fontSize(CONFIG.fontSizes.badge).fillColor(CONFIG.colors.verifiedBadge)
+    .text(badgeText, badgeX + 8, badgeY + 3, { lineBreak: false });
+
+  // ── Meta items ──
+  const metaItems = [
+    { label: 'Booking Ref:', value: bookingRef },
+    { label: 'Customer ID:', value: safeText(guest?.customerId) },
+    { label: 'Timestamp:', value: formatDateTime(new Date()) },
+  ];
+
+  let metaX = badgeX + badgeWidth + 20;
+  metaItems.forEach((item) => {
+    const labelW = doc.font(CONFIG.fonts.bold).fontSize(CONFIG.fontSizes.statusBar).widthOfString(item.label);
+    doc.font(CONFIG.fonts.bold).fontSize(CONFIG.fontSizes.statusBar).fillColor(CONFIG.colors.textMuted)
+      .text(item.label, metaX, barY + 6, { lineBreak: false });
+    
+    const valW = doc.font(CONFIG.fonts.normal).fontSize(CONFIG.fontSizes.statusBar).widthOfString(item.value);
+    doc.font(CONFIG.fonts.normal).fontSize(CONFIG.fontSizes.statusBar).fillColor(CONFIG.colors.textPrimary)
+      .text(item.value, metaX + labelW + 4, barY + 6, { lineBreak: false });
+    
+    metaX += labelW + valW + 18;
+  });
+
+  doc.y = barY + barHeight + 10;
+};
+
+// ============================================================
+// SECTION TITLE — Dark bar with white text (matching template)
+// ============================================================
+
+const drawSectionTitle = (doc, number, title) => {
+  ensureSpace(doc, 30);
+  const area = getPageArea(doc);
+  const barY = doc.y;
+  const barHeight = 20;
+
+  // Dark navy background
+  doc.roundedRect(area.left, barY, area.contentWidth, barHeight, 3)
+    .fill(CONFIG.colors.sectionBg);
+
+  // Section text
+  const sectionText = `${number}. ${title.toUpperCase()}`;
+  doc.font(CONFIG.fonts.bold).fontSize(CONFIG.fontSizes.sectionTitle).fillColor(CONFIG.colors.sectionText)
+    .text(sectionText, area.left + 10, barY + 5, { width: area.contentWidth - 20, lineBreak: false });
+
+  doc.y = barY + barHeight + 8;
+};
+
+// ============================================================
+// BORDERED CELL — Individual data cell with label and value
+// ============================================================
+
+const drawBorderedCell = (doc, x, y, w, h, label, value) => {
+  // Cell border
+  doc.rect(x, y, w, h).lineWidth(0.5).strokeColor(CONFIG.colors.border).stroke();
+
+  // Label
+  doc.font(CONFIG.fonts.bold).fontSize(6.5).fillColor(CONFIG.colors.textMuted)
+    .text(label.toUpperCase(), x + 6, y + 4, { width: w - 12, lineBreak: false });
+
+  // Value
+  doc.font(CONFIG.fonts.bold).fontSize(CONFIG.fontSizes.body).fillColor(CONFIG.colors.textPrimary)
+    .text(safeText(value), x + 6, y + 14, { width: w - 12 });
+};
+
+// ============================================================
+// SECTION 1: STAY ALLOCATION & BOOKING DETAILS
+// ============================================================
+
+const drawStaySection = (doc, guest) => {
+  drawSectionTitle(doc, '1', 'STAY ALLOCATION & BOOKING DETAILS');
+  const area = getPageArea(doc);
+  const startY = doc.y;
+  const cellHeight = 34;
+  const colW = area.contentWidth / 4;
+
+  // Row 1
+  drawBorderedCell(doc, area.left, startY, colW, cellHeight, 'Allocated Room', `Room No. ${safeText(guest?.stayDetails?.roomNumber)}`);
+  drawBorderedCell(doc, area.left + colW, startY, colW, cellHeight, 'Room Category', 'Standard');
+  drawBorderedCell(doc, area.left + colW * 2, startY, colW, cellHeight, 'Expected Check-Out', formatDateTime(guest?.stayDetails?.expectedCheckout));
+  drawBorderedCell(doc, area.left + colW * 3, startY, colW, cellHeight, 'Check-In Date/Time', formatDateTime(guest?.stayDetails?.checkIn));
+
+  // Row 2
+  const row2Y = startY + cellHeight;
+  const halfW = area.contentWidth / 2;
+  drawBorderedCell(doc, area.left, row2Y, halfW, cellHeight, 'Purpose of Visit', safeText(guest?.stayDetails?.purposeOfVisit));
+  drawBorderedCell(doc, area.left + halfW, row2Y, halfW, cellHeight, 'Total Occupancy', getOccupancyText(guest));
+
+  doc.y = row2Y + cellHeight + 10;
+};
+
+// ============================================================
+// SECTION 2: GUEST DETAILS (Primary + Co-Occupants side by side)
+// ============================================================
+
+const drawGuestLabelValue = (doc, x, y, labelWidth, label, value, maxWidth) => {
+  doc.font(CONFIG.fonts.bold).fontSize(CONFIG.fontSizes.label).fillColor(CONFIG.colors.textMuted)
+    .text(`${label}:`, x, y, { width: labelWidth, lineBreak: false });
+  doc.font(CONFIG.fonts.normal).fontSize(CONFIG.fontSizes.body).fillColor(CONFIG.colors.textPrimary)
+    .text(safeText(value), x + labelWidth + 4, y, { width: maxWidth - labelWidth - 4 });
+};
+
+const drawGuestCard = (doc, guest, guestData, x, y, w, cardNumber, label, isCoOccupant = false) => {
+  const labelWidth = 72;
+  const rowHeight = 14;
+  const padding = 8;
 
   // Card border
-  doc.roundedRect(x, y, width, height, 6).lineWidth(0.8).strokeColor(CONFIG.colors.border).stroke();
+  doc.rect(x, y, w, 10).lineWidth(0.5).strokeColor(CONFIG.colors.border).stroke(); // placeholder for dynamic height
 
-  // Title bar
-  const titleBarHeight = 22;
-  doc.rect(x + 0.5, y + 0.5, width - 1, titleBarHeight).fill(CONFIG.colors.tableHeaderBg);
+  // Header row with guest number
+  const headerY = y;
+  const headerH = 18;
+  doc.rect(x, headerY, w, headerH).lineWidth(0.5).strokeColor(CONFIG.colors.border).stroke();
 
-  doc
-    .font(CONFIG.fonts.bold)
-    .fontSize(8)
-    .fillColor(CONFIG.colors.brand)
-    .text(title, x + 4, y + 7, {
-      width: width - 8,
-      align: 'center',
-      lineBreak: false,
+  // Guest title
+  doc.font(CONFIG.fonts.bold).fontSize(CONFIG.fontSizes.body).fillColor(CONFIG.colors.textPrimary)
+    .text(`GUEST #${String(cardNumber).padStart(2, '0')}: ${label.toUpperCase()}`, x + padding, headerY + 5, { width: w - padding * 2 - 60, lineBreak: false });
+
+  // Verified badge
+  const badgeText = `#${String(cardNumber).padStart(2, '0')} Verified`;
+  const badgeW = doc.font(CONFIG.fonts.bold).fontSize(6).widthOfString(badgeText) + 12;
+  doc.roundedRect(x + w - badgeW - padding, headerY + 4, badgeW, 12, 3).fill(CONFIG.colors.successBg);
+  doc.font(CONFIG.fonts.bold).fontSize(6).fillColor(CONFIG.colors.verifiedBadge)
+    .text(badgeText, x + w - badgeW - padding + 6, headerY + 7, { lineBreak: false });
+
+  // Guest details rows
+  let rowY = headerY + headerH + padding;
+  const innerW = w - padding * 2;
+
+  if (!isCoOccupant) {
+    // Primary guest details
+    const fields = [
+      { label: 'FULL NAME', value: guest?.primaryGuest?.name },
+      { label: 'MOBILE NO', value: guest?.primaryGuest?.phone },
+      { label: 'DOB / GENDER', value: formatDobWithAgeAndGender(guest?.primaryGuest?.dob, guest?.primaryGuest?.gender) },
+      { label: 'NATIONALITY', value: guest?.primaryGuest?.nationality || guest?.hotel?.nationality || 'Indian' },
+      { label: 'ID DOCUMENT', value: `${safeText(guest?.idType)} (${maskIdNumber(guest?.idNumber)})` },
+      { label: 'EMAIL', value: guest?.primaryGuest?.email },
+      { label: 'ADDRESS', value: buildAddress(guest) },
+    ];
+
+    fields.forEach((field) => {
+      drawGuestLabelValue(doc, x + padding, rowY, labelWidth, field.label, field.value, innerW);
+      rowY += rowHeight;
     });
+  } else {
+    // Co-occupant (accompanying guest)
+    const fields = [
+      { label: 'FULL NAME', value: guestData?.name },
+      { label: 'MOBILE NO', value: guestData?.phone || 'N/A' },
+      { label: 'DOB / GENDER', value: formatDobWithAgeAndGender(guestData?.dob, guestData?.gender) },
+      { label: 'NATIONALITY', value: 'Indian' },
+      { label: 'ID DOCUMENT', value: guestData?.idType ? `${safeText(guestData.idType)} (${maskIdNumber(guestData.idNumber)})` : 'N/A' },
+      { label: 'RELATION', value: 'Colleague / Co-Traveller' },
+      { label: 'ADDRESS', value: buildAddress(guest) },
+    ];
 
-  const frameX = x + 6;
-  const frameY = y + titleBarHeight + 6;
-  const frameWidth = width - 12;
-  const frameHeight = height - titleBarHeight - 12;
-
-  if (!imageBuffer) {
-    drawImagePlaceholder(doc, frameX, frameY, frameWidth, frameHeight);
-    return;
+    fields.forEach((field) => {
+      drawGuestLabelValue(doc, x + padding, rowY, labelWidth, field.label, field.value, innerW);
+      rowY += rowHeight;
+    });
   }
 
-  try {
-    doc
-      .rect(frameX, frameY, frameWidth, frameHeight)
-      .strokeColor(CONFIG.colors.divider)
-      .lineWidth(0.3)
-      .stroke();
+  const totalHeight = rowY - y + padding;
+  // Redraw the outer card border with correct height
+  doc.rect(x, y, w, totalHeight).lineWidth(0.5).strokeColor(CONFIG.colors.border).stroke();
 
-    doc.image(imageBuffer, frameX, frameY, {
-      fit: [frameWidth, frameHeight],
-      align: 'center',
-      valign: 'center',
-    });
-  } catch (error) {
-    logger.warn(`Failed to embed ${title} image in PDF: ${error.message}`);
-    drawImagePlaceholder(doc, frameX, frameY, frameWidth, frameHeight);
+  return totalHeight;
+};
+
+const drawGuestDetailsSection = (doc, guest) => {
+  const adults = Array.isArray(guest?.accompanyingGuests?.adults) ? guest.accompanyingGuests.adults : [];
+  const children = Array.isArray(guest?.accompanyingGuests?.children) ? guest.accompanyingGuests.children : [];
+  const allAccompanying = [...adults, ...children];
+
+  const hasAccompanying = allAccompanying.length > 0;
+  const titleSuffix = hasAccompanying ? '(MULTIPLE OCCUPANTS)' : '(SINGLE OCCUPANT)';
+  drawSectionTitle(doc, '2', `GUEST DETAILS ${titleSuffix}`);
+
+  const area = getPageArea(doc);
+  const gap = 8;
+
+  if (hasAccompanying) {
+    // Side-by-side: primary + first co-occupant
+    const colW = (area.contentWidth - gap) / 2;
+    const startY = doc.y;
+
+    ensureSpace(doc, 180);
+    const primaryHeight = drawGuestCard(doc, guest, null, area.left, doc.y, colW, 1, 'PRIMARY (LEAD)', false);
+    const coHeight = drawGuestCard(doc, guest, allAccompanying[0], area.left + colW + gap, startY, colW, 2, 'CO-OCCUPANT', true);
+
+    doc.y = startY + Math.max(primaryHeight, coHeight) + 10;
+
+    // Additional accompanying guests (if more than 1)
+    for (let i = 1; i < allAccompanying.length; i++) {
+      ensureSpace(doc, 180);
+      const h = drawGuestCard(doc, guest, allAccompanying[i], area.left, doc.y, area.contentWidth, i + 2, 'CO-OCCUPANT', true);
+      doc.y += h + 10;
+    }
+  } else {
+    // Single guest — full width
+    ensureSpace(doc, 180);
+    const h = drawGuestCard(doc, guest, null, area.left, doc.y, area.contentWidth, 1, 'PRIMARY (LEAD)', false);
+    doc.y += h + 10;
   }
 };
 
-const drawImageSection = (doc, images) => {
-  drawSectionTitle(doc, 'Verification Images');
-  ensureSpace(doc, 200);
+// ============================================================
+// SECTION 3: DIGITAL KYC VERIFICATION & LIVE CAPTURE EVIDENCE
+// ============================================================
+
+const drawImagePlaceholder = (doc, x, y, width, height, text) => {
+  doc.rect(x, y, width, height).fillAndStroke(CONFIG.colors.placeholderBg, CONFIG.colors.border);
+  doc.font(CONFIG.fonts.italic).fontSize(7).fillColor(CONFIG.colors.textMuted)
+    .text(text || 'Not Available', x + 4, y + height / 2 - 6, { width: width - 8, align: 'center' });
+};
+
+const drawImageBox = (doc, x, y, width, height, title, imageBuffer, captionText) => {
+  // Title
+  doc.font(CONFIG.fonts.bold).fontSize(6.5).fillColor(CONFIG.colors.textMuted)
+    .text(title.toUpperCase(), x, y, { width: width, align: 'center', lineBreak: false });
+
+  const imgY = y + 12;
+  const imgH = height - 12;
+
+  // Border
+  doc.roundedRect(x, imgY, width, imgH, 4).lineWidth(0.5).strokeColor(CONFIG.colors.border).stroke();
+
+  if (imageBuffer) {
+    try {
+      doc.image(imageBuffer, x + 4, imgY + 4, { fit: [width - 8, imgH - 8], align: 'center', valign: 'center' });
+    } catch (error) {
+      drawImagePlaceholder(doc, x + 2, imgY + 2, width - 4, imgH - 4, 'Image Error');
+    }
+  } else {
+    drawImagePlaceholder(doc, x + 2, imgY + 2, width - 4, imgH - 4);
+  }
+
+  // Caption below image
+  if (captionText) {
+    doc.font(CONFIG.fonts.italic).fontSize(6).fillColor(CONFIG.colors.textMuted)
+      .text(captionText, x, imgY + imgH + 2, { width: width, align: 'center', lineBreak: false });
+  }
+};
+
+const drawKycSection = (doc, images, guest) => {
+  drawSectionTitle(doc, '3', 'DIGITAL KYC VERIFICATION & LIVE CAPTURE EVIDENCE');
+  ensureSpace(doc, 160);
 
   const area = getPageArea(doc);
-  const gap = 10;
-  const cardWidth = (area.contentWidth - gap * 2) / 3;
-  const cardHeight = 180;
-  let startY = doc.y;
+  const gap = 8;
+  const colW = (area.contentWidth - gap * 3) / 4;
+  const boxHeight = 110;
+  const startY = doc.y;
 
-  // Primary Guest Text
-  doc
-    .font(CONFIG.fonts.bold)
-    .fontSize(CONFIG.fontSizes.body)
-    .fillColor(CONFIG.colors.textPrimary)
-    .text('Primary Guest', area.left, startY);
-  startY += 18;
+  const primaryName = safeText(guest?.primaryGuest?.name, 'Guest');
+  const primaryTime = formatTime(guest?.registrationTimestamp);
 
-  drawImageCard(doc, {
-    x: area.left,
-    y: startY,
-    width: cardWidth,
-    height: cardHeight,
-    title: 'Live Photo',
-    imageBuffer: images.livePhoto,
-  });
+  // 4-column layout: Guest 1 Live Photo | Guest 2 Live Photo | ID Front | ID Back
+  const accompanyingGuests = images.accompanyingGuests || [];
+  const firstAccLivePhoto = accompanyingGuests.length > 0 ? accompanyingGuests[0]?.images?.livePhoto : null;
+  const firstAccName = accompanyingGuests.length > 0 ? safeText(accompanyingGuests[0]?.name, 'Guest 2') : null;
 
-  drawImageCard(doc, {
-    x: area.left + cardWidth + gap,
-    y: startY,
-    width: cardWidth,
-    height: cardHeight,
-    title: 'ID Front',
-    imageBuffer: images.idImageFront,
-  });
+  drawImageBox(doc, area.left, startY, colW, boxHeight, 'GUEST 1: LIVE PHOTO', images.livePhoto, primaryTime ? `${primaryName.split(' ')[0]} (${primaryTime})` : null);
+  drawImageBox(doc, area.left + colW + gap, startY, colW, boxHeight, 'GUEST 2: LIVE PHOTO', firstAccLivePhoto, firstAccName ? `[Webcam Captured]` : null);
+  drawImageBox(doc, area.left + (colW + gap) * 2, startY, colW, boxHeight, 'GOVT ID PROOF (FRONT)', images.idImageFront);
+  drawImageBox(doc, area.left + (colW + gap) * 3, startY, colW, boxHeight, 'GOVT ID PROOF (BACK)', images.idImageBack);
 
-  drawImageCard(doc, {
-    x: area.left + (cardWidth + gap) * 2,
-    y: startY,
-    width: cardWidth,
-    height: cardHeight,
-    title: 'ID Back',
-    imageBuffer: images.idImageBack,
-  });
+  doc.y = startY + boxHeight + 22;
 
-  doc.y = startY + cardHeight + 16;
+  // Additional accompanying guest images (if more than 1)
+  for (let i = 1; i < accompanyingGuests.length; i++) {
+    const acc = accompanyingGuests[i];
+    const hasAny = acc.images.livePhoto || acc.images.idImageFront || acc.images.idImageBack;
+    if (!hasAny) continue;
 
-  // Accompanying Guest Images
-  const accGuests = images.accompanyingGuests || [];
-  accGuests.forEach((accp) => {
-    // Check if any of the three images exist
-    const hasAnyImage = accp.images.livePhoto || accp.images.idImageFront || accp.images.idImageBack;
-    if (!hasAnyImage) return;
+    ensureSpace(doc, 130);
+    const accY = doc.y;
 
-    ensureSpace(doc, 215);
-    startY = doc.y;
+    doc.font(CONFIG.fonts.bold).fontSize(CONFIG.fontSizes.body).fillColor(CONFIG.colors.textPrimary)
+      .text(`Additional Guest: ${safeText(acc.name)}`, area.left, accY);
+    const imgStartY = accY + 14;
 
-    doc
-      .font(CONFIG.fonts.bold)
-      .fontSize(CONFIG.fontSizes.body)
-      .fillColor(CONFIG.colors.textPrimary)
-      .text(`Accompanying Guest: ${safeText(accp.name)}`, area.left, startY);
-    startY += 18;
+    const accColW = (area.contentWidth - gap * 2) / 3;
+    drawImageBox(doc, area.left, imgStartY, accColW, boxHeight, 'LIVE PHOTO', acc.images.livePhoto);
+    drawImageBox(doc, area.left + accColW + gap, imgStartY, accColW, boxHeight, 'ID FRONT', acc.images.idImageFront);
+    drawImageBox(doc, area.left + (accColW + gap) * 2, imgStartY, accColW, boxHeight, 'ID BACK', acc.images.idImageBack);
 
-    drawImageCard(doc, {
-      x: area.left,
-      y: startY,
-      width: cardWidth,
-      height: cardHeight,
-      title: 'Live Photo',
-      imageBuffer: accp.images.livePhoto,
-    });
-
-    drawImageCard(doc, {
-      x: area.left + cardWidth + gap,
-      y: startY,
-      width: cardWidth,
-      height: cardHeight,
-      title: 'ID Front',
-      imageBuffer: accp.images.idImageFront,
-    });
-
-    drawImageCard(doc, {
-      x: area.left + (cardWidth + gap) * 2,
-      y: startY,
-      width: cardWidth,
-      height: cardHeight,
-      title: 'ID Back',
-      imageBuffer: accp.images.idImageBack,
-    });
-
-    doc.y = startY + cardHeight + 16;
-  });
+    doc.y = imgStartY + boxHeight + 16;
+  }
 };
 
 // ============================================================
-// SECURITY NOTE
+// SECTION 4: HOTEL VERIFICATION & AUTHORIZATION
 // ============================================================
 
-const drawSecurityNote = (doc, documentRef) => {
-  ensureSpace(doc, 50);
+const drawAuthorizationSection = (doc, images) => {
+  drawSectionTitle(doc, '4', 'HOTEL VERIFICATION & AUTHORIZATION');
+  ensureSpace(doc, 140);
+
   const area = getPageArea(doc);
-  const noteY = doc.y;
-  const noteHeight = 40;
+  const startY = doc.y;
+  const sectionHeight = 110;
 
-  doc
-    .roundedRect(area.left, noteY, area.contentWidth, noteHeight, 5)
-    .lineWidth(0.5)
-    .fillAndStroke(CONFIG.colors.sectionBg, CONFIG.colors.border);
+  // Outer border
+  doc.rect(area.left, startY, area.contentWidth, sectionHeight).lineWidth(0.5).strokeColor(CONFIG.colors.border).stroke();
 
-  doc
-    .font(CONFIG.fonts.bold)
-    .fontSize(7.5)
-    .fillColor(CONFIG.colors.textSecondary)
-    .text('SECURITY NOTE', area.left + 10, noteY + 8, { width: area.contentWidth - 20 });
+  const halfW = area.contentWidth / 2;
 
-  doc
-    .font(CONFIG.fonts.normal)
-    .fontSize(7)
-    .fillColor(CONFIG.colors.textMuted)
-    .text(
-      `This is a system-generated document. Verify reference ${documentRef} for authenticity. Do not share personal information from this receipt.`,
-      area.left + 10,
-      noteY + 20,
-      { width: area.contentWidth - 20 }
-    );
+  // Left: Hotel Official Stamp
+  doc.rect(area.left, startY, halfW, sectionHeight).lineWidth(0.5).strokeColor(CONFIG.colors.border).stroke();
+  doc.font(CONFIG.fonts.bold).fontSize(CONFIG.fontSizes.label).fillColor(CONFIG.colors.textMuted)
+    .text('HOTEL OFFICIAL STAMP', area.left + 10, startY + 8, { width: halfW - 20, lineBreak: false });
 
-  doc.y = noteY + noteHeight + 8;
+  if (images.hotelStamp) {
+    try {
+      doc.image(images.hotelStamp, area.left + 15, startY + 22, { fit: [halfW - 30, sectionHeight - 35], align: 'center', valign: 'center' });
+    } catch (e) {
+      drawImagePlaceholder(doc, area.left + 10, startY + 22, halfW - 20, sectionHeight - 35, '[Stamp Not Available]');
+    }
+  } else {
+    drawImagePlaceholder(doc, area.left + 10, startY + 22, halfW - 20, sectionHeight - 35, '[Stamp Not Available]');
+  }
+
+  // Right: Owner Signature
+  if (images.ownerSignature) {
+    try {
+      doc.image(images.ownerSignature, area.left + halfW + 15, startY + 15, { fit: [halfW - 30, sectionHeight - 40], align: 'center', valign: 'center' });
+    } catch (e) {
+      // Ignore
+    }
+  }
+
+  // Label below signature
+  doc.moveTo(area.left + halfW + 20, startY + sectionHeight - 20)
+    .lineTo(area.right - 20, startY + sectionHeight - 20)
+    .strokeColor(CONFIG.colors.border).lineWidth(0.3).stroke();
+
+  doc.font(CONFIG.fonts.normal).fontSize(CONFIG.fontSizes.small).fillColor(CONFIG.colors.textSecondary)
+    .text('Hotel Owner / Authorized Signatory', area.left + halfW + 10, startY + sectionHeight - 16, {
+      width: halfW - 20, align: 'right',
+    });
+
+  doc.y = startY + sectionHeight + 10;
 };
 
 // ============================================================
-// FOOTER — Hotel-branded with subtle Apna Register credit
+// GUEST DECLARATION & HOTEL REGULATIONS
 // ============================================================
 
-const addPageFooters = (doc, guest, documentRef) => {
+const drawDeclaration = (doc) => {
+  ensureSpace(doc, 80);
+  const area = getPageArea(doc);
+  const startY = doc.y;
+
+  // Title
+  doc.font(CONFIG.fonts.bold).fontSize(CONFIG.fontSizes.body).fillColor(CONFIG.colors.textPrimary)
+    .text('GUEST DECLARATION & HOTEL REGULATIONS', area.left, startY);
+
+  const rulesY = startY + 14;
+  const rules = [
+    '1. I/We declare that all furnished identity details are authentic and certified under Section 193 of the Indian Penal Code.',
+    '2. Standard Check-In: 12:00 PM | Standard Check-Out: 11:00 AM. Extra tariff applies on unapproved delay.',
+    '3. Weapons, illicit contraband, or consumption of prohibited intoxicants is strictly banned inside premises.',
+    '4. Hotel authority shall not be held liable for unsecured cash or precious items kept outside personal safe lockers.',
+  ];
+
+  // Rules background
+  const ruleHeight = rules.length * 11 + 10;
+  doc.roundedRect(area.left, rulesY, area.contentWidth, ruleHeight, 3)
+    .fillAndStroke(CONFIG.colors.declarationBg, CONFIG.colors.borderLight);
+
+  let ruleY = rulesY + 6;
+  rules.forEach((rule) => {
+    doc.font(CONFIG.fonts.normal).fontSize(6.5).fillColor(CONFIG.colors.textSecondary)
+      .text(rule, area.left + 8, ruleY, { width: area.contentWidth - 16 });
+    ruleY += 11;
+  });
+
+  doc.y = rulesY + ruleHeight + 8;
+};
+
+// ============================================================
+// FOOTER — Hotel brand + Powered by Apna Register
+// ============================================================
+
+const addPageFooters = (doc, guest, bookingRef) => {
   const pageRange = doc.bufferedPageRange();
   const hotelName = safeText(guest?.hotel?.hotelName || guest?.hotel?.username, 'Hotel');
 
   for (let i = 0; i < pageRange.count; i++) {
     doc.switchToPage(i);
     const area = getPageArea(doc);
-    const lineY = doc.page.height - CONFIG.margin - 22;
+    const lineY = doc.page.height - CONFIG.margin - 18;
 
-    // Divider line
-    doc
-      .moveTo(area.left, lineY)
-      .lineTo(area.right, lineY)
-      .strokeColor(CONFIG.colors.divider)
-      .lineWidth(0.5)
-      .stroke();
+    doc.moveTo(area.left, lineY).lineTo(area.right, lineY)
+      .strokeColor(CONFIG.colors.divider).lineWidth(0.5).stroke();
 
-    // Left: Hotel name
-    doc
-      .font(CONFIG.fonts.bold)
-      .fontSize(CONFIG.fontSizes.footer)
-      .fillColor(CONFIG.colors.textMuted)
-      .text(`${hotelName}`, area.left, lineY + 6, {
-        width: 180,
-        lineBreak: false,
-      });
+    doc.font(CONFIG.fonts.bold).fontSize(CONFIG.fontSizes.footer).fillColor(CONFIG.colors.textMuted)
+      .text(hotelName, area.left, lineY + 5, { width: 180, lineBreak: false });
 
-    // Center: Reference + powered by
-    doc
-      .font(CONFIG.fonts.normal)
-      .fontSize(CONFIG.fontSizes.footer)
-      .fillColor(CONFIG.colors.textMuted)
-      .text(`Ref: ${documentRef}  •  Powered by Apna Register`, area.left, lineY + 6, {
-        width: area.contentWidth,
-        align: 'center',
-        lineBreak: false,
-      });
+    doc.font(CONFIG.fonts.normal).fontSize(CONFIG.fontSizes.footer).fillColor(CONFIG.colors.textMuted)
+      .text(`Ref: ${bookingRef}  •  Powered by Apna Register`, area.left, lineY + 5, { width: area.contentWidth, align: 'center', lineBreak: false });
 
-    // Right: Page number
-    doc
-      .font(CONFIG.fonts.normal)
-      .fontSize(CONFIG.fontSizes.footer)
-      .fillColor(CONFIG.colors.textMuted)
-      .text(`Page ${i + 1} of ${pageRange.count}`, area.left, lineY + 6, {
-        width: area.contentWidth,
-        align: 'right',
-        lineBreak: false,
-      });
+    doc.font(CONFIG.fonts.normal).fontSize(CONFIG.fontSizes.footer).fillColor(CONFIG.colors.textMuted)
+      .text(`Page ${i + 1} of ${pageRange.count}`, area.left, lineY + 5, { width: area.contentWidth, align: 'right', lineBreak: false });
   }
 };
 
@@ -965,136 +843,75 @@ const addPageFooters = (doc, guest, documentRef) => {
 const renderMainPdf = async (guestData) => {
   const doc = createPdfDoc();
   const outputPromise = collectPdfBuffer(doc);
-  const documentRef = buildDocumentRef(guestData);
+  const bookingRef = buildBookingRef(guestData);
 
   registerPageDecorators(doc);
 
-  // Load images from Cloudinary via signed URLs (server-side only)
   const images = await loadReceiptImages(guestData);
 
-  // ── Header ──
-  drawHeader(doc, guestData, documentRef);
+  // Section 0: Header
+  drawHeader(doc, guestData, bookingRef);
 
-  // ── Guest Information ──
-  drawSectionTitle(doc, 'Guest Information');
-  drawKeyValueGrid(
-    doc,
-    [
-      { label: 'Guest Name', value: guestData?.primaryGuest?.name },
-      { label: 'Customer ID', value: guestData?.customerId },
-      { label: 'Phone', value: guestData?.primaryGuest?.phone },
-      { label: 'Email', value: guestData?.primaryGuest?.email },
-      { label: 'Gender', value: guestData?.primaryGuest?.gender },
-      { label: 'Date of Birth', value: formatDobWithAge(guestData?.primaryGuest?.dob) },
-      { label: 'Address', value: buildAddress(guestData) },
-      {
-        label: 'Nationality',
-        value: guestData?.primaryGuest?.nationality || guestData?.hotel?.nationality || 'N/A',
-      },
-    ],
-    2
-  );
+  // Status Bar
+  drawStatusBar(doc, guestData, bookingRef);
 
-  // ── Stay Details ──
-  drawSectionTitle(doc, 'Stay Details');
-  drawKeyValueGrid(
-    doc,
-    [
-      { label: 'Room Number', value: guestData?.stayDetails?.roomNumber },
-      { label: 'Purpose of Visit', value: guestData?.stayDetails?.purposeOfVisit },
-      { label: 'Check-In', value: formatDateTime(guestData?.stayDetails?.checkIn) },
-      {
-        label: 'Expected Checkout',
-        value: formatDateTime(guestData?.stayDetails?.expectedCheckout),
-      },
-      {
-        label: 'Actual Checkout',
-        value: formatDateTime(guestData?.stayDetails?.checkOut || new Date()),
-      },
-      { label: 'Registered On', value: formatDateTime(guestData?.registrationTimestamp) },
-    ],
-    2
-  );
+  // Section 1: Stay Allocation & Booking Details
+  drawStaySection(doc, guestData);
 
-  // ── Identity Information ──
-  drawSectionTitle(doc, 'Identity Information');
-  drawKeyValueGrid(
-    doc,
-    [
-      { label: 'ID Type', value: guestData?.idType },
-      { label: 'ID Number', value: maskIdNumber(guestData?.idNumber) },
-    ],
-    2
-  );
+  // Section 2: Guest Details
+  drawGuestDetailsSection(doc, guestData);
 
-  // ── Accompanying Guests (table) ──
-  drawAccompanyingGuestSection(doc, guestData);
+  // Section 3: Digital KYC Verification
+  drawKycSection(doc, images, guestData);
 
-  // ── Verification Images ──
-  drawImageSection(doc, images);
+  // Section 4: Hotel Verification & Authorization
+  drawAuthorizationSection(doc, images);
 
-  // ── Security Note ──
-  drawSecurityNote(doc, documentRef);
+  // Declaration
+  drawDeclaration(doc);
 
-  // ── Footers (applied to all pages) ──
-  addPageFooters(doc, guestData, documentRef);
+  // Footers
+  addPageFooters(doc, guestData, bookingRef);
   doc.end();
 
   return outputPromise;
 };
 
 // ============================================================
-// FALLBACK PDF (when main render fails)
+// FALLBACK PDF
 // ============================================================
 
 const renderFallbackPdf = async (guestData, sourceError) => {
   const doc = createPdfDoc();
   const outputPromise = collectPdfBuffer(doc);
-  const documentRef = buildDocumentRef(guestData);
+  const bookingRef = buildBookingRef(guestData);
 
   registerPageDecorators(doc);
+  drawHeader(doc, guestData, bookingRef);
 
-  drawHeader(doc, guestData, documentRef);
-
-  drawSectionTitle(doc, 'Guest Information');
-  drawKeyValueGrid(
-    doc,
-    [
-      { label: 'Guest Name', value: guestData?.primaryGuest?.name },
-      { label: 'Customer ID', value: guestData?.customerId },
-      { label: 'Hotel', value: guestData?.hotel?.hotelName || guestData?.hotel?.username },
-      {
-        label: 'Checkout Time',
-        value: formatDateTime(guestData?.stayDetails?.checkOut || new Date()),
-      },
-    ],
-    2
-  );
-
-  drawSectionTitle(doc, 'Notice');
+  drawSectionTitle(doc, '1', 'GUEST INFORMATION');
   const area = getPageArea(doc);
-  doc
-    .font(CONFIG.fonts.normal)
-    .fontSize(CONFIG.fontSizes.body)
-    .fillColor(CONFIG.colors.textPrimary)
-    .text(
-      'Detailed PDF rendering was unavailable at generation time. This fallback receipt is still valid for operational records.',
-      area.left,
-      doc.y,
-      { width: area.contentWidth }
-    );
+
+  const fields = [
+    { label: 'Guest Name', value: guestData?.primaryGuest?.name },
+    { label: 'Customer ID', value: guestData?.customerId },
+    { label: 'Hotel', value: guestData?.hotel?.hotelName || guestData?.hotel?.username },
+    { label: 'Checkout Time', value: formatDateTime(guestData?.stayDetails?.checkOut || new Date()) },
+  ];
+
+  fields.forEach((f) => {
+    doc.font(CONFIG.fonts.bold).fontSize(CONFIG.fontSizes.label).fillColor(CONFIG.colors.textMuted)
+      .text(`${f.label}:`, area.left, doc.y, { continued: true, width: 100 });
+    doc.font(CONFIG.fonts.normal).fontSize(CONFIG.fontSizes.body).fillColor(CONFIG.colors.textPrimary)
+      .text(`  ${safeText(f.value)}`);
+    doc.moveDown(0.3);
+  });
 
   doc.moveDown(0.5);
-  doc
-    .font(CONFIG.fonts.italic)
-    .fontSize(CONFIG.fontSizes.small)
-    .fillColor(CONFIG.colors.textMuted)
-    .text(
-      `Reference ${documentRef} | Render note: ${safeText(sourceError?.message, 'Unknown issue')}`,
-      { width: area.contentWidth }
-    );
+  doc.font(CONFIG.fonts.italic).fontSize(CONFIG.fontSizes.small).fillColor(CONFIG.colors.textMuted)
+    .text(`Detailed rendering was unavailable. Reference ${bookingRef}. Reason: ${safeText(sourceError?.message, 'Unknown')}`, { width: area.contentWidth });
 
-  addPageFooters(doc, guestData, documentRef);
+  addPageFooters(doc, guestData, bookingRef);
   doc.end();
 
   return outputPromise;
@@ -1117,7 +934,6 @@ const generateGuestPDF = async (guestData) => {
     return await renderMainPdf(guestData || {});
   } catch (error) {
     logger.error(`Primary PDF generation failed: ${error.message}`);
-
     try {
       return await renderFallbackPdf(guestData || {}, error);
     } catch (fallbackError) {
